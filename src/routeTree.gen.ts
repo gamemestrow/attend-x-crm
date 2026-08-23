@@ -11,6 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as StudentIndexRouteImport } from './routes/student.index'
+import { Route as StudentHistoryRouteImport } from './routes/student.history'
+import { Route as StudentScanRouteImport } from './routes/student.scan'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,30 +24,48 @@ const StudentIndexRoute = StudentIndexRouteImport.update({
   path: '/student/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const StudentHistoryRoute = StudentHistoryRouteImport.update({
+  id: '/student/history',
+  path: '/student/history',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StudentScanRoute = StudentScanRouteImport.update({
+  id: '/student/scan',
+  path: '/student/scan',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/student/history': typeof StudentHistoryRoute
+  '/student/scan': typeof StudentScanRoute
   '/student/': typeof StudentIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/student/history': typeof StudentHistoryRoute
+  '/student/scan': typeof StudentScanRoute
   '/student': typeof StudentIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/student/history': typeof StudentHistoryRoute
+  '/student/scan': typeof StudentScanRoute
   '/student/': typeof StudentIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/student/'
+  fullPaths: '/' | '/student/history' | '/student/scan' | '/student/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/student'
-  id: '__root__' | '/' | '/student/'
+  to: '/' | '/student/history' | '/student/scan' | '/student'
+  id: '__root__' | '/' | '/student/history' | '/student/scan' | '/student/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  StudentHistoryRoute: typeof StudentHistoryRoute
+  StudentScanRoute: typeof StudentScanRoute
   StudentIndexRoute: typeof StudentIndexRoute
 }
 
@@ -65,11 +85,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StudentIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/student/history': {
+      id: '/student/history'
+      path: '/student/history'
+      fullPath: '/student/history'
+      preLoaderRoute: typeof StudentHistoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/student/scan': {
+      id: '/student/scan'
+      path: '/student/scan'
+      fullPath: '/student/scan'
+      preLoaderRoute: typeof StudentScanRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  StudentHistoryRoute: StudentHistoryRoute,
+  StudentScanRoute: StudentScanRoute,
   StudentIndexRoute: StudentIndexRoute,
 }
 export const routeTree = rootRouteImport

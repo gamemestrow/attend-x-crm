@@ -101,13 +101,22 @@ function ScanPage() {
   const tokens = useAttendanceStore((s) => s.tokens);
   const sessions = useAttendanceStore((s) => s.sessions);
   const activeSessionId = useAttendanceStore((s) => s.activeSessionId);
+  const authUser = useAttendanceStore((s) => s.auth);
+  const studentName = authUser?.role === "student" ? authUser.student.name : "";
   const navigate = useNavigate();
 
   const handleScan = async (text: string) => {
     setPhase({ kind: "validating" });
     const outcome = await attemptScan(text);
-    if (outcome.ok) setPhase({ kind: "success", outcome });
-    else setPhase({ kind: "failure", reason: outcome.reason, distance: outcome.distance });
+    if (outcome.ok) {
+      setPhase({ kind: "success", outcome });
+    } else {
+      setPhase(
+        outcome.distance != null
+          ? { kind: "failure", reason: outcome.reason, distance: outcome.distance }
+          : { kind: "failure", reason: outcome.reason },
+      );
+    }
   };
 
   // Demo helper for evaluators without a second screen: runs the exact same
@@ -177,7 +186,7 @@ function ScanPage() {
               Attendance Marked Successfully
             </h2>
             <dl className="mt-4 w-full space-y-2 text-sm">
-              <Row k="Student" v={useAttendanceStore.getState().auth?.role === "student" ? useAttendanceStore.getState().auth.student.name : ""} />
+              <Row k="Student" v={studentName} />
               <Row k="Subject" v={subjectName(phase.outcome.session.subject_id)} />
               <Row k="Class" v={className(phase.outcome.session.class_id)} />
               <Row
@@ -213,7 +222,7 @@ function ScanPage() {
         <Card className="border-destructive/40">
           <CardContent className="flex flex-col items-center p-6 text-center">
             {(() => {
-              const copy = FAILURE_COPY[phase.reason] ?? FAILURE_COPY.INVALID_QR!;
+              const copy = FAILURE_COPY[phase.reason] ?? FAILURE_COPY["INVALID_QR"]!;
               const Icon = copy.icon;
               return (
                 <>
