@@ -192,7 +192,7 @@ export function makeStudentSeedRecords(student: Student): AttendanceRecord[] {
   SUBJECTS.forEach((sub, si) => {
     const rand = mulberry32(hashSeed(student.student_id + sub.id));
     PAST_OFFSETS.forEach((off, di) => {
-      const present = rand() < SUBJECT_PRESENCE[si];
+      const present = rand() < (SUBJECT_PRESENCE[si] ?? 0.85);
       const when = dayAt(off, 9, 55 + ((di * 3 + si) % 9));
       records.push({
         id: `seed-${student.student_id}-${sub.id}-${off}`,
