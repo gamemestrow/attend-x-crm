@@ -14,6 +14,8 @@ import { Route as StudentIndexRouteImport } from './routes/student.index'
 import { Route as StudentHistoryRouteImport } from './routes/student.history'
 import { Route as StudentScanRouteImport } from './routes/student.scan'
 import { Route as TeacherIndexRouteImport } from './routes/teacher.index'
+import { Route as TeacherHistoryRouteImport } from './routes/teacher.history'
+import { Route as TeacherSessionRouteImport } from './routes/teacher.session'
 import { Route as TeacherStartRouteImport } from './routes/teacher.start'
 
 const IndexRoute = IndexRouteImport.update({
@@ -41,6 +43,16 @@ const TeacherIndexRoute = TeacherIndexRouteImport.update({
   path: '/teacher/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TeacherHistoryRoute = TeacherHistoryRouteImport.update({
+  id: '/teacher/history',
+  path: '/teacher/history',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TeacherSessionRoute = TeacherSessionRouteImport.update({
+  id: '/teacher/session',
+  path: '/teacher/session',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TeacherStartRoute = TeacherStartRouteImport.update({
   id: '/teacher/start',
   path: '/teacher/start',
@@ -51,6 +63,8 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/student/history': typeof StudentHistoryRoute
   '/student/scan': typeof StudentScanRoute
+  '/teacher/history': typeof TeacherHistoryRoute
+  '/teacher/session': typeof TeacherSessionRoute
   '/teacher/start': typeof TeacherStartRoute
   '/student/': typeof StudentIndexRoute
   '/teacher/': typeof TeacherIndexRoute
@@ -59,6 +73,8 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/student/history': typeof StudentHistoryRoute
   '/student/scan': typeof StudentScanRoute
+  '/teacher/history': typeof TeacherHistoryRoute
+  '/teacher/session': typeof TeacherSessionRoute
   '/teacher/start': typeof TeacherStartRoute
   '/student': typeof StudentIndexRoute
   '/teacher': typeof TeacherIndexRoute
@@ -68,6 +84,8 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/student/history': typeof StudentHistoryRoute
   '/student/scan': typeof StudentScanRoute
+  '/teacher/history': typeof TeacherHistoryRoute
+  '/teacher/session': typeof TeacherSessionRoute
   '/teacher/start': typeof TeacherStartRoute
   '/student/': typeof StudentIndexRoute
   '/teacher/': typeof TeacherIndexRoute
@@ -78,6 +96,8 @@ export interface FileRouteTypes {
     | '/'
     | '/student/history'
     | '/student/scan'
+    | '/teacher/history'
+    | '/teacher/session'
     | '/teacher/start'
     | '/student/'
     | '/teacher/'
@@ -86,6 +106,8 @@ export interface FileRouteTypes {
     | '/'
     | '/student/history'
     | '/student/scan'
+    | '/teacher/history'
+    | '/teacher/session'
     | '/teacher/start'
     | '/student'
     | '/teacher'
@@ -94,6 +116,8 @@ export interface FileRouteTypes {
     | '/'
     | '/student/history'
     | '/student/scan'
+    | '/teacher/history'
+    | '/teacher/session'
     | '/teacher/start'
     | '/student/'
     | '/teacher/'
@@ -103,6 +127,8 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   StudentHistoryRoute: typeof StudentHistoryRoute
   StudentScanRoute: typeof StudentScanRoute
+  TeacherHistoryRoute: typeof TeacherHistoryRoute
+  TeacherSessionRoute: typeof TeacherSessionRoute
   TeacherStartRoute: typeof TeacherStartRoute
   StudentIndexRoute: typeof StudentIndexRoute
   TeacherIndexRoute: typeof TeacherIndexRoute
@@ -145,6 +171,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TeacherIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/teacher/history': {
+      id: '/teacher/history'
+      path: '/teacher/history'
+      fullPath: '/teacher/history'
+      preLoaderRoute: typeof TeacherHistoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/teacher/session': {
+      id: '/teacher/session'
+      path: '/teacher/session'
+      fullPath: '/teacher/session'
+      preLoaderRoute: typeof TeacherSessionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/teacher/start': {
       id: '/teacher/start'
       path: '/teacher/start'
@@ -159,6 +199,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   StudentHistoryRoute: StudentHistoryRoute,
   StudentScanRoute: StudentScanRoute,
+  TeacherHistoryRoute: TeacherHistoryRoute,
+  TeacherSessionRoute: TeacherSessionRoute,
   TeacherStartRoute: TeacherStartRoute,
   StudentIndexRoute: StudentIndexRoute,
   TeacherIndexRoute: TeacherIndexRoute,
