@@ -53,6 +53,8 @@ import {
   useAttendanceStore,
 } from "@/lib/attendance/store";
 import { cn } from "@/lib/utils";
+import { encodeAttendanceQr } from "@/lib/attendance/qr";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/teacher/session")({
   head: () => ({
@@ -151,6 +153,34 @@ function LiveView({ session }: { session: AttendanceSession }) {
     const t = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(t);
   }, []);
+
+  useEffect(() => {
+    const refreshRecords = async () => {
+      const { data } = await supabase
+        .from("attendance_records")
+        .select("*")
+        .eq("session_id", session.session_id);
+      if (!data) return;
+      useAttendanceStore.setState((state) => {
+        const otherRecords = state.records.filter((record) => record.session_id !== session.session_id);
+        const liveRecords = data.map((record) => ({
+          id: record.id,
+          session_id: record.session_id,
+          student_id: record.student_id,
+          subject_id: record.subject_id,
+          class_id: record.class_id,
+          date: record.attendance_date,
+          scan_time: record.scan_time ? new Date(record.scan_time).getTime() : null,
+          status: record.status as "PRESENT" | "ABSENT",
+          location_valid: record.location_valid,
+        }));
+        return { records: [...otherRecords, ...liveRecords] };
+      });
+    };
+    void refreshRecords();
+    const interval = window.setInterval(() => void refreshRecords(), 1000);
+    return () => window.clearInterval(interval);
+  }, [session.session_id]);
 
   const token = getActiveToken(tokens, session.session_id);
   const expired = !!token && now > token.expires_at;
@@ -257,7 +287,7 @@ function LiveView({ session }: { session: AttendanceSession }) {
             <div className="relative w-full max-w-65 rounded-2xl border bg-card p-4">
               {token && !expired ? (
                 <QRCode
-                  value={token.token}
+                  value={encodeAttendanceQr(session.session_id, token.token)}
                   size={256}
                   style={{ height: "auto", maxWidth: "100%", width: "100%" }}
                   fgColor="oklch(0.35 0.12 255)"
@@ -274,7 +304,7 @@ function LiveView({ session }: { session: AttendanceSession }) {
                   <Button
                     size="sm"
                     className="gap-2"
-                    onClick={() => regenerateToken(session.session_id)}
+                    onClick={() => void regenerateToken(session.session_id)}
                   >
                     <RefreshCw className="h-3.5 w-3.5" /> Generate New QR
                   </Button>
@@ -324,7 +354,7 @@ function LiveView({ session }: { session: AttendanceSession }) {
             <Button
               variant="outline"
               className="mt-4 w-full gap-2"
-              onClick={() => regenerateToken(session.session_id)}
+              onClick={() => void regenerateToken(session.session_id)}
             >
               <RefreshCw className="h-4 w-4" /> Generate New QR
             </Button>

@@ -58,9 +58,9 @@ function StartPage() {
     }
   };
 
-  const start = () => {
+  const start = async () => {
     if (loc.kind !== "ok") return;
-    startSession({
+    await startSession({
       classId,
       semester,
       subjectId,
@@ -68,7 +68,7 @@ function StartPage() {
       qrValidity: validity,
       location: loc.pos,
     });
-    void navigate({ to: "/teacher/session" });
+    await navigate({ to: "/teacher/session" });
   };
 
   const cls = CLASSES.find((c) => c.id === classId);
