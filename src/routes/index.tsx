@@ -31,7 +31,6 @@ export const Route = createFileRoute("/")({
 });
 
 function LoginPage() {
-  console.log("[login] render");
   const [role, setRole] = useState<"student" | "teacher">("student");
   const [id, setId] = useState("");
   const [password, setPassword] = useState("");

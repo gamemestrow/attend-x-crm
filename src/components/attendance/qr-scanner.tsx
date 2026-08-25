@@ -31,8 +31,15 @@ export function QrScanner({
 
     const start = async () => {
       try {
+        // facingMode must be `ideal`, not exact: a plain "environment" value is
+        // a hard constraint that fails on laptops/desktops (whose cameras report
+        // "user"), which made the scanner error out instead of opening the webcam.
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
           audio: false,
         });
       } catch {
@@ -51,7 +58,9 @@ export function QrScanner({
           ctx.drawImage(video, 0, 0);
           const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
           const code = jsQR(img.data, img.width, img.height, {
-            inversionAttempts: "dontInvert",
+            // attemptBoth handles glare/contrast on projector screens; the
+            // teacher QR is dark-on-light so this stays cheap in practice.
+            inversionAttempts: "attemptBoth",
           });
           if (code?.data) {
             cleanup();

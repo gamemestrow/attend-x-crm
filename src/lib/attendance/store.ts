@@ -95,7 +95,7 @@ export const useAttendanceStore = create<AttendanceState>()(
         get().ensureSeeded();
       },
 
-      logout: () => { console.log("[store] logout action"); set({ auth: null, activeSessionId: null }); console.log("[store] logout done, auth =", get().auth); },
+      logout: () => set({ auth: null, activeSessionId: null }),
 
       ensureSeeded: () => {
         const st = get();
