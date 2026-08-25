@@ -55,6 +55,7 @@ import {
 import { cn } from "@/lib/utils";
 import { encodeAttendanceQr } from "@/lib/attendance/qr";
 import { supabase } from "@/integrations/supabase/client";
+import type { Tables } from "@/integrations/supabase/types";
 
 export const Route = createFileRoute("/teacher/session")({
   head: () => ({
@@ -163,7 +164,7 @@ function LiveView({ session }: { session: AttendanceSession }) {
       if (!data) return;
       useAttendanceStore.setState((state) => {
         const otherRecords = state.records.filter((record) => record.session_id !== session.session_id);
-        const liveRecords = data.map((record) => ({
+        const liveRecords = data.map((record: Tables<"attendance_records">) => ({
           id: record.id,
           session_id: record.session_id,
           student_id: record.student_id,
