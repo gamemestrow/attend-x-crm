@@ -10,6 +10,8 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as StudentRouteImport } from './routes/student'
+import { Route as TeacherRouteImport } from './routes/teacher'
 import { Route as StudentIndexRouteImport } from './routes/student.index'
 import { Route as StudentHistoryRouteImport } from './routes/student.history'
 import { Route as StudentScanRouteImport } from './routes/student.scan'
@@ -23,44 +25,56 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const StudentIndexRoute = StudentIndexRouteImport.update({
-  id: '/student/',
-  path: '/student/',
+const StudentRoute = StudentRouteImport.update({
+  id: '/student',
+  path: '/student',
   getParentRoute: () => rootRouteImport,
+} as any)
+const TeacherRoute = TeacherRouteImport.update({
+  id: '/teacher',
+  path: '/teacher',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StudentIndexRoute = StudentIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => StudentRoute,
 } as any)
 const StudentHistoryRoute = StudentHistoryRouteImport.update({
-  id: '/student/history',
-  path: '/student/history',
-  getParentRoute: () => rootRouteImport,
+  id: '/history',
+  path: '/history',
+  getParentRoute: () => StudentRoute,
 } as any)
 const StudentScanRoute = StudentScanRouteImport.update({
-  id: '/student/scan',
-  path: '/student/scan',
-  getParentRoute: () => rootRouteImport,
+  id: '/scan',
+  path: '/scan',
+  getParentRoute: () => StudentRoute,
 } as any)
 const TeacherIndexRoute = TeacherIndexRouteImport.update({
-  id: '/teacher/',
-  path: '/teacher/',
-  getParentRoute: () => rootRouteImport,
+  id: '/',
+  path: '/',
+  getParentRoute: () => TeacherRoute,
 } as any)
 const TeacherHistoryRoute = TeacherHistoryRouteImport.update({
-  id: '/teacher/history',
-  path: '/teacher/history',
-  getParentRoute: () => rootRouteImport,
+  id: '/history',
+  path: '/history',
+  getParentRoute: () => TeacherRoute,
 } as any)
 const TeacherSessionRoute = TeacherSessionRouteImport.update({
-  id: '/teacher/session',
-  path: '/teacher/session',
-  getParentRoute: () => rootRouteImport,
+  id: '/session',
+  path: '/session',
+  getParentRoute: () => TeacherRoute,
 } as any)
 const TeacherStartRoute = TeacherStartRouteImport.update({
-  id: '/teacher/start',
-  path: '/teacher/start',
-  getParentRoute: () => rootRouteImport,
+  id: '/start',
+  path: '/start',
+  getParentRoute: () => TeacherRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/student': typeof StudentRouteWithChildren
+  '/teacher': typeof TeacherRouteWithChildren
   '/student/history': typeof StudentHistoryRoute
   '/student/scan': typeof StudentScanRoute
   '/teacher/history': typeof TeacherHistoryRoute
@@ -82,6 +96,8 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/student': typeof StudentRouteWithChildren
+  '/teacher': typeof TeacherRouteWithChildren
   '/student/history': typeof StudentHistoryRoute
   '/student/scan': typeof StudentScanRoute
   '/teacher/history': typeof TeacherHistoryRoute
@@ -94,6 +110,8 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/student'
+    | '/teacher'
     | '/student/history'
     | '/student/scan'
     | '/teacher/history'
@@ -114,6 +132,8 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/student'
+    | '/teacher'
     | '/student/history'
     | '/student/scan'
     | '/teacher/history'
@@ -125,13 +145,8 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  StudentHistoryRoute: typeof StudentHistoryRoute
-  StudentScanRoute: typeof StudentScanRoute
-  TeacherHistoryRoute: typeof TeacherHistoryRoute
-  TeacherSessionRoute: typeof TeacherSessionRoute
-  TeacherStartRoute: typeof TeacherStartRoute
-  StudentIndexRoute: typeof StudentIndexRoute
-  TeacherIndexRoute: typeof TeacherIndexRoute
+  StudentRoute: typeof StudentRouteWithChildren
+  TeacherRoute: typeof TeacherRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -143,67 +158,108 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/student': {
+      id: '/student'
+      path: '/student'
+      fullPath: '/student'
+      preLoaderRoute: typeof StudentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/teacher': {
+      id: '/teacher'
+      path: '/teacher'
+      fullPath: '/teacher'
+      preLoaderRoute: typeof TeacherRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/student/': {
       id: '/student/'
-      path: '/student'
+      path: '/'
       fullPath: '/student/'
       preLoaderRoute: typeof StudentIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof StudentRoute
     }
     '/student/history': {
       id: '/student/history'
-      path: '/student/history'
+      path: '/history'
       fullPath: '/student/history'
       preLoaderRoute: typeof StudentHistoryRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof StudentRoute
     }
     '/student/scan': {
       id: '/student/scan'
-      path: '/student/scan'
+      path: '/scan'
       fullPath: '/student/scan'
       preLoaderRoute: typeof StudentScanRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof StudentRoute
     }
     '/teacher/': {
       id: '/teacher/'
-      path: '/teacher'
+      path: '/'
       fullPath: '/teacher/'
       preLoaderRoute: typeof TeacherIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof TeacherRoute
     }
     '/teacher/history': {
       id: '/teacher/history'
-      path: '/teacher/history'
+      path: '/history'
       fullPath: '/teacher/history'
       preLoaderRoute: typeof TeacherHistoryRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof TeacherRoute
     }
     '/teacher/session': {
       id: '/teacher/session'
-      path: '/teacher/session'
+      path: '/session'
       fullPath: '/teacher/session'
       preLoaderRoute: typeof TeacherSessionRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof TeacherRoute
     }
     '/teacher/start': {
       id: '/teacher/start'
-      path: '/teacher/start'
+      path: '/start'
       fullPath: '/teacher/start'
       preLoaderRoute: typeof TeacherStartRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof TeacherRoute
     }
   }
 }
 
-const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
+interface StudentRouteChildren {
+  StudentHistoryRoute: typeof StudentHistoryRoute
+  StudentScanRoute: typeof StudentScanRoute
+  StudentIndexRoute: typeof StudentIndexRoute
+}
+
+const StudentRouteChildren: StudentRouteChildren = {
   StudentHistoryRoute: StudentHistoryRoute,
   StudentScanRoute: StudentScanRoute,
+  StudentIndexRoute: StudentIndexRoute,
+}
+
+const StudentRouteWithChildren =
+  StudentRoute._addFileChildren(StudentRouteChildren)
+
+interface TeacherRouteChildren {
+  TeacherHistoryRoute: typeof TeacherHistoryRoute
+  TeacherSessionRoute: typeof TeacherSessionRoute
+  TeacherStartRoute: typeof TeacherStartRoute
+  TeacherIndexRoute: typeof TeacherIndexRoute
+}
+
+const TeacherRouteChildren: TeacherRouteChildren = {
   TeacherHistoryRoute: TeacherHistoryRoute,
   TeacherSessionRoute: TeacherSessionRoute,
   TeacherStartRoute: TeacherStartRoute,
-  StudentIndexRoute: StudentIndexRoute,
   TeacherIndexRoute: TeacherIndexRoute,
+}
+
+const TeacherRouteWithChildren =
+  TeacherRoute._addFileChildren(TeacherRouteChildren)
+
+const rootRouteChildren: RootRouteChildren = {
+  IndexRoute: IndexRoute,
+  StudentRoute: StudentRouteWithChildren,
+  TeacherRoute: TeacherRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

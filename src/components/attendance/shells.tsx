@@ -1,5 +1,4 @@
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useHydrated } from "@tanstack/react-router";
+import { Link, Navigate, useRouterState } from "@tanstack/react-router";
 import {
   History,
   LayoutDashboard,
@@ -8,7 +7,6 @@ import {
   ScanLine,
   Play,
 } from "lucide-react";
-import { useEffect } from "react";
 import { useAttendanceStore, type AuthUser } from "@/lib/attendance/store";
 import { cn } from "@/lib/utils";
 
@@ -35,17 +33,16 @@ export function BrandMark({ size = "md" }: { size?: "sm" | "md" }) {
   );
 }
 
-/** Client-side role guard. Returns the authed user or null while redirecting. */
+/**
+ * Client-side role guard. The /student and /teacher layouts are ssr:false and
+ * also enforce the role in beforeLoad, so by the time a shell renders the
+ * session is normally valid. If it isn't (e.g. right after logout), the
+ * caller renders an immediate <Navigate> back to the login page — no blank
+ * screen, no reliance on a post-render effect.
+ */
 export function useRequireRole(role: "student" | "teacher"): AuthUser | null {
-  const hydrated = useHydrated();
   const auth = useAttendanceStore((s) => s.auth);
-  const navigate = useNavigate();
-  useEffect(() => {
-    if (hydrated && (!auth || auth.role !== role)) {
-      void navigate({ to: "/" });
-    }
-  }, [hydrated, auth, role, navigate]);
-  if (!hydrated || !auth || auth.role !== role) return null;
+  if (!auth || auth.role !== role) return null;
   return auth;
 }
 
@@ -53,7 +50,13 @@ export function StudentShell({ children }: { children: React.ReactNode }) {
   const auth = useRequireRole("student");
   const logout = useAttendanceStore((s) => s.logout);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  if (!auth || auth.role !== "student") return null;
+  const handleLogout = () => {
+    logout();
+    // Hard navigation: fully resets the client tree so no protected state can
+    // linger, and always lands on the login page.
+    window.location.replace("/");
+  };
+  if (!auth || auth.role !== "student") return <Navigate to="/" replace />;
   const s = auth.student;
   return (
     <div className="min-h-screen bg-background">
@@ -69,7 +72,7 @@ export function StudentShell({ children }: { children: React.ReactNode }) {
               {s.name.split(" ").map((w) => w[0]).slice(0, 2).join("")}
             </div>
             <button
-              onClick={logout}
+              onClick={handleLogout}
               aria-label="Log out"
               className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
@@ -122,7 +125,13 @@ export function TeacherShell({ children }: { children: React.ReactNode }) {
   const auth = useRequireRole("teacher");
   const logout = useAttendanceStore((s) => s.logout);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  if (!auth || auth.role !== "teacher") return null;
+  const handleLogout = () => {
+    logout();
+    // Hard navigation: fully resets the client tree so no protected state can
+    // linger, and always lands on the login page.
+    window.location.replace("/");
+  };
+  if (!auth || auth.role !== "teacher") return <Navigate to="/" replace />;
   const t = auth.teacher;
   const today = new Date().toLocaleDateString("en-IN", {
     weekday: "short",
@@ -164,7 +173,7 @@ export function TeacherShell({ children }: { children: React.ReactNode }) {
               <div className="font-mono text-[11px] text-muted-foreground">{t.teacher_id}</div>
             </div>
             <button
-              onClick={logout}
+              onClick={handleLogout}
               className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <LogOut className="h-3.5 w-3.5" />
