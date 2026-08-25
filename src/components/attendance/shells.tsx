@@ -1,4 +1,4 @@
-import { Link, Navigate, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, Navigate, useRouterState } from "@tanstack/react-router";
 import {
   History,
   LayoutDashboard,
@@ -49,11 +49,12 @@ export function useRequireRole(role: "student" | "teacher"): AuthUser | null {
 export function StudentShell({ children }: { children: React.ReactNode }) {
   const auth = useRequireRole("student");
   const logout = useAttendanceStore((s) => s.logout);
-  const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const handleLogout = () => {
     logout();
-    void navigate({ to: "/", replace: true });
+    // Hard navigation: fully resets the client tree so no protected state can
+    // linger, and always lands on the login page.
+    window.location.replace("/");
   };
   if (!auth || auth.role !== "student") return <Navigate to="/" replace />;
   const s = auth.student;
@@ -123,11 +124,12 @@ function NavItem({ to, icon, label, active }: { to: string; icon: React.ReactNod
 export function TeacherShell({ children }: { children: React.ReactNode }) {
   const auth = useRequireRole("teacher");
   const logout = useAttendanceStore((s) => s.logout);
-  const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const handleLogout = () => {
     logout();
-    void navigate({ to: "/", replace: true });
+    // Hard navigation: fully resets the client tree so no protected state can
+    // linger, and always lands on the login page.
+    window.location.replace("/");
   };
   if (!auth || auth.role !== "teacher") return <Navigate to="/" replace />;
   const t = auth.teacher;
