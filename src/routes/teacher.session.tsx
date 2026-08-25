@@ -55,6 +55,7 @@ import {
 import { cn } from "@/lib/utils";
 import { encodeAttendanceQr } from "@/lib/attendance/qr";
 import { supabase } from "@/integrations/supabase/client";
+import type { Tables } from "@/integrations/supabase/types";
 
 export const Route = createFileRoute("/teacher/session")({
   head: () => ({
