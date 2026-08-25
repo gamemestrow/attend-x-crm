@@ -14,7 +14,142 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      attendance_records: {
+        Row: {
+          attendance_date: string
+          class_id: string
+          created_at: string
+          id: string
+          location_valid: boolean
+          scan_time: string | null
+          session_id: string
+          status: string
+          student_id: string
+          subject_id: string
+        }
+        Insert: {
+          attendance_date: string
+          class_id: string
+          created_at?: string
+          id: string
+          location_valid?: boolean
+          scan_time?: string | null
+          session_id: string
+          status: string
+          student_id: string
+          subject_id: string
+        }
+        Update: {
+          attendance_date?: string
+          class_id?: string
+          created_at?: string
+          id?: string
+          location_valid?: boolean
+          scan_time?: string | null
+          session_id?: string
+          status?: string
+          student_id?: string
+          subject_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_records_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      attendance_sessions: {
+        Row: {
+          attendance_radius: number
+          class_id: string
+          created_at: string
+          end_time: string | null
+          id: string
+          qr_validity: number
+          semester: number
+          session_date: string
+          start_time: string
+          status: string
+          subject_id: string
+          teacher_id: string
+          teacher_latitude: number
+          teacher_longitude: number
+          updated_at: string
+        }
+        Insert: {
+          attendance_radius: number
+          class_id: string
+          created_at?: string
+          end_time?: string | null
+          id: string
+          qr_validity: number
+          semester: number
+          session_date: string
+          start_time?: string
+          status?: string
+          subject_id: string
+          teacher_id: string
+          teacher_latitude: number
+          teacher_longitude: number
+          updated_at?: string
+        }
+        Update: {
+          attendance_radius?: number
+          class_id?: string
+          created_at?: string
+          end_time?: string | null
+          id?: string
+          qr_validity?: number
+          semester?: number
+          session_date?: string
+          start_time?: string
+          status?: string
+          subject_id?: string
+          teacher_id?: string
+          teacher_latitude?: number
+          teacher_longitude?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      qr_tokens: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          session_id: string
+          status: string
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id: string
+          session_id: string
+          status?: string
+          token: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          session_id?: string
+          status?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qr_tokens_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
