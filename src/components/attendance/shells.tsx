@@ -1,4 +1,4 @@
-import { Link, Navigate, useRouterState } from "@tanstack/react-router";
+import { Link, Navigate, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   History,
   LayoutDashboard,
@@ -49,7 +49,12 @@ export function useRequireRole(role: "student" | "teacher"): AuthUser | null {
 export function StudentShell({ children }: { children: React.ReactNode }) {
   const auth = useRequireRole("student");
   const logout = useAttendanceStore((s) => s.logout);
+  const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const handleLogout = () => {
+    logout();
+    void navigate({ to: "/", replace: true });
+  };
   if (!auth || auth.role !== "student") return <Navigate to="/" replace />;
   const s = auth.student;
   return (
@@ -66,7 +71,7 @@ export function StudentShell({ children }: { children: React.ReactNode }) {
               {s.name.split(" ").map((w) => w[0]).slice(0, 2).join("")}
             </div>
             <button
-              onClick={logout}
+              onClick={handleLogout}
               aria-label="Log out"
               className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
@@ -118,7 +123,12 @@ function NavItem({ to, icon, label, active }: { to: string; icon: React.ReactNod
 export function TeacherShell({ children }: { children: React.ReactNode }) {
   const auth = useRequireRole("teacher");
   const logout = useAttendanceStore((s) => s.logout);
+  const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const handleLogout = () => {
+    logout();
+    void navigate({ to: "/", replace: true });
+  };
   if (!auth || auth.role !== "teacher") return <Navigate to="/" replace />;
   const t = auth.teacher;
   const today = new Date().toLocaleDateString("en-IN", {
@@ -161,7 +171,7 @@ export function TeacherShell({ children }: { children: React.ReactNode }) {
               <div className="font-mono text-[11px] text-muted-foreground">{t.teacher_id}</div>
             </div>
             <button
-              onClick={logout}
+              onClick={handleLogout}
               className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <LogOut className="h-3.5 w-3.5" />
