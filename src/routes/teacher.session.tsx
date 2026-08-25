@@ -163,7 +163,7 @@ function LiveView({ session }: { session: AttendanceSession }) {
       if (!data) return;
       useAttendanceStore.setState((state) => {
         const otherRecords = state.records.filter((record) => record.session_id !== session.session_id);
-        const liveRecords = data.map((record) => ({
+        const liveRecords = data.map((record: Tables<"attendance_records">) => ({
           id: record.id,
           session_id: record.session_id,
           student_id: record.student_id,
