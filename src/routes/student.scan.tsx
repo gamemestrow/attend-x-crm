@@ -1,4 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { isDemoLocationClient, type DemoScenario } from "@/lib/attendance/demo-mode";
+import type { DemoLocationInfo } from "@/lib/attendance/attendance.functions";
 import {
   Ban,
   CameraOff,
@@ -41,7 +43,7 @@ type Phase =
   | { kind: "scanning" }
   | { kind: "validating" }
   | { kind: "success"; outcome: Extract<ScanOutcome, { ok: true }> }
-  | { kind: "failure"; reason: ScanFailure | "CAMERA_DENIED"; distance?: number; accuracy?: number; radius?: number };
+  | { kind: "failure"; reason: ScanFailure | "CAMERA_DENIED"; distance?: number; accuracy?: number; radius?: number; demo?: DemoLocationInfo };
 
 const VALIDATION_STEPS = [
   "Verifying login",
@@ -143,6 +145,8 @@ const FAILURE_COPY: Record<string, { title: string; body: string; icon: typeof X
 
 function ScanPage() {
   const [phase, setPhase] = useState<Phase>({ kind: "scanning" });
+  const demoMode = isDemoLocationClient();
+  const [scenario, setScenario] = useState<DemoScenario>("inside");
   const attemptScan = useAttendanceStore((s) => s.attemptScan);
   const tokens = useAttendanceStore((s) => s.tokens);
   const sessions = useAttendanceStore((s) => s.sessions);
@@ -153,7 +157,7 @@ function ScanPage() {
 
   const handleScan = async (text: string) => {
     setPhase({ kind: "validating" });
-    const outcome = await attemptScan(text);
+    const outcome = await attemptScan(text, demoMode ? scenario : undefined);
     if (outcome.ok) {
       setPhase({ kind: "success", outcome });
     } else {
@@ -163,6 +167,7 @@ function ScanPage() {
         ...(outcome.distance != null ? { distance: outcome.distance } : {}),
         ...(outcome.accuracy != null ? { accuracy: outcome.accuracy } : {}),
         ...(outcome.radius != null ? { radius: outcome.radius } : {}),
+        ...(outcome.demo ? { demo: outcome.demo } : {}),
       });
     }
   };
@@ -187,6 +192,18 @@ function ScanPage() {
 
       {phase.kind === "scanning" && (
         <>
+          {demoMode && (
+            <div className="mb-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+              <div className="mb-2 font-semibold text-warning">DEMO DATA — Simulated student location</div>
+              <div className="flex gap-2">
+                {(["inside", "outside"] as const).map((sc) => (
+                  <Button key={sc} size="sm" variant={scenario === sc ? "default" : "outline"} onClick={() => setScenario(sc)}>
+                    {sc === "inside" ? "Inside radius" : "Outside radius"}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
           <QrScanner
             onScan={(text) => void handleScan(text)}
             onCameraError={() => setPhase({ kind: "failure", reason: "CAMERA_DENIED" })}
@@ -260,9 +277,10 @@ function ScanPage() {
               <Row k="Status" v="PRESENT" highlight />
               <Row
                 k="Location"
-                v={phase.outcome.locationVerified ? "Verified within radius" : "Not verified (Demo Mode)"}
+                v={phase.outcome.locationVerified ? "Verified within radius" : "Simulated (DEMO DATA)"}
               />
             </dl>
+            {phase.outcome.demo && <DemoPanel d={phase.outcome.demo} />}
             <Button className="mt-5 w-full" onClick={() => void navigate({ to: "/student" })}>
               Back to Dashboard
             </Button>
@@ -281,7 +299,8 @@ function ScanPage() {
                   <Icon className="mb-2 h-12 w-12 text-destructive" />
                   <h2 className="font-display text-lg font-bold text-destructive">{copy.title}</h2>
                   <p className="mt-1 text-sm text-muted-foreground">{copy.body}</p>
-                  {phase.reason === "OUTSIDE_RADIUS" && phase.distance != null && (
+                  {phase.demo && <DemoPanel d={phase.demo} />}
+                  {!phase.demo && phase.reason === "OUTSIDE_RADIUS" && phase.distance != null && (
                     <p className="tabular mt-2 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium">
                       Measured distance: {Math.round(phase.distance)} m (allowed: {phase.radius} m)
                     </p>
@@ -317,6 +336,23 @@ function Row({ k, v, highlight }: { k: string; v: string; highlight?: boolean })
     <div className="flex items-center justify-between border-b pb-2 last:border-0 last:pb-0">
       <dt className="text-muted-foreground">{k}</dt>
       <dd className={highlight ? "font-bold text-success" : "font-semibold"}>{v}</dd>
+    </div>
+  );
+}
+
+function DemoPanel({ d }: { d: DemoLocationInfo }) {
+  const c = (p: { lat: number; lng: number }) => `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`;
+  return (
+    <div className="mt-4 w-full rounded-lg border border-warning/40 bg-warning/10 p-3 text-left text-xs">
+      <div className="mb-1 font-semibold text-warning">DEMO DATA — not real GPS</div>
+      <div className="tabular space-y-0.5 text-muted-foreground">
+        <div>Teacher demo reference: <span className="font-mono">{c(d.reference)}</span></div>
+        <div>Simulated student location: <span className="font-mono">{c(d.student)}</span></div>
+        <div>Selected radius: {d.radius} m · Calculated distance: {Math.round(d.distance)} m</div>
+        <div className={d.inside ? "font-semibold text-success" : "font-semibold text-destructive"}>
+          {d.inside ? "Inside radius (simulated)" : "Outside radius (simulated)"}
+        </div>
+      </div>
     </div>
   );
 }
