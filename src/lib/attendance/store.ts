@@ -13,6 +13,7 @@ import {
   type Student,
   type Teacher,
 } from "./data";
+import { isDemoModeClient } from "./demo-mode";
 import { getFreshFix, GeoError, type LocationFix } from "./geo";
 import { beginAttendanceScan, submitAttendanceScan, type ServerScanResult } from "./attendance.functions";
 import { supabase } from "@/integrations/supabase/client";
@@ -41,7 +42,7 @@ export type ScanFailure =
   | "NETWORK";
 
 export type ScanOutcome =
-  | { ok: true; session: AttendanceSession; record: AttendanceRecord; distance: number; accuracy: number }
+  | { ok: true; session: AttendanceSession; record: AttendanceRecord; distance: number | null; accuracy: number | null; locationVerified: boolean; demoMode: boolean }
   | { ok: false; reason: ScanFailure; distance?: number; accuracy?: number; radius?: number };
 
 export interface SessionConfig {
@@ -309,12 +310,17 @@ export const useAttendanceStore = create<AttendanceState>()(
         }
         // Fresh browser geolocation reading (no Bluetooth). Raw reading is sent to
         // the server, which computes distance and decides acceptance.
-        let fix: LocationFix;
+        // Location permission is still requested. In temporary Demo Mode a failed
+        // reading is sent as null (never fabricated) and the server decides.
+        let fix: LocationFix | null;
         try {
           fix = await getFreshFix();
         } catch (e) {
           const code = e instanceof GeoError ? e.code : "UNAVAILABLE";
-          return { ok: false, reason: code === "DENIED" ? "LOCATION_DENIED" : (`GEO_${code}` as ScanFailure) };
+          if (!isDemoModeClient()) {
+            return { ok: false, reason: code === "DENIED" ? "LOCATION_DENIED" : (`GEO_${code}` as ScanFailure) };
+          }
+          fix = null;
         }
         let res: ServerScanResult;
         try {
@@ -359,10 +365,10 @@ export const useAttendanceStore = create<AttendanceState>()(
           date: s.session_date,
           scan_time: new Date(res.scanTime).getTime(),
           status: "PRESENT",
-          location_valid: true,
+          location_valid: res.locationVerified,
         };
         set((state) => ({ records: [...state.records.filter((r) => r.id !== record.id), record] }));
-        return { ok: true, session, record, distance: res.distance, accuracy: res.accuracy };
+        return { ok: true, session, record, distance: res.distance, accuracy: res.accuracy, locationVerified: res.locationVerified, demoMode: res.demoMode };
       },
 
       // Demo helper for the hackathon presentation: a few classmates scan in.

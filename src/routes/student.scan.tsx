@@ -258,6 +258,10 @@ function ScanPage() {
                 }
               />
               <Row k="Status" v="PRESENT" highlight />
+              <Row
+                k="Location"
+                v={phase.outcome.locationVerified ? "Verified within radius" : "Not verified (Demo Mode)"}
+              />
             </dl>
             <Button className="mt-5 w-full" onClick={() => void navigate({ to: "/student" })}>
               Back to Dashboard

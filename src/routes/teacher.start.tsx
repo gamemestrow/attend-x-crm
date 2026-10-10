@@ -19,6 +19,7 @@ import {
   teacherMaxAccuracy,
   type LocationFix,
 } from "@/lib/attendance/geo";
+import { isDemoModeClient } from "@/lib/attendance/demo-mode";
 import { useAttendanceStore } from "@/lib/attendance/store";
 import { cn } from "@/lib/utils";
 
@@ -71,9 +72,13 @@ function StartPage() {
     }
   };
 
+  // Demo Mode: a low-accuracy (but real) reading may still start a session.
+  const demo = isDemoModeClient();
+  const canStart = loc.kind === "ok" || (demo && loc.kind === "poor");
+
   const start = async () => {
-    if (loc.kind !== "ok") return;
-    if (loc.pos.accuracy > teacherMaxAccuracy(effectiveRadius)) {
+    if (loc.kind !== "ok" && !(demo && loc.kind === "poor")) return;
+    if (!demo && loc.pos.accuracy > teacherMaxAccuracy(effectiveRadius)) {
       setLoc({ kind: "poor", pos: loc.pos });
       return;
     }
@@ -271,15 +276,20 @@ function StartPage() {
             <Button
               className="mt-6 w-full gap-2"
               size="lg"
-              disabled={loc.kind !== "ok"}
+              disabled={!canStart}
               onClick={start}
             >
               <Play className="h-4 w-4" /> START ATTENDANCE
             </Button>
             {startError && <p className="mt-2 text-center text-xs text-destructive">{startError}</p>}
-            {loc.kind !== "ok" && (
+            {!canStart && (
               <p className="mt-2 text-center text-xs text-muted-foreground">
                 Detect your location to enable starting the session.
+              </p>
+            )}
+            {demo && (
+              <p className="mt-2 text-center text-xs text-warning">
+                Demo Mode: distance and accuracy are recorded but not enforced.
               </p>
             )}
           </CardContent>
