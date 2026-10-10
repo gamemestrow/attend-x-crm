@@ -14,7 +14,7 @@ import {
   type Teacher,
 } from "./data";
 import { getFreshFix, GeoError, type LocationFix } from "./geo";
-import { submitAttendanceScan, type ServerScanResult } from "./attendance.functions";
+import { beginAttendanceScan, submitAttendanceScan, type ServerScanResult } from "./attendance.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { parseAttendanceQr } from "./qr";
 
@@ -297,6 +297,16 @@ export const useAttendanceStore = create<AttendanceState>()(
         const student = auth.student;
         const payload = parseAttendanceQr(raw);
         if (!payload) return { ok: false, reason: "INVALID_QR" };
+        let attemptId: string;
+        try {
+          const begun = await beginAttendanceScan({
+            data: { studentId: student.student_id, sessionId: payload.sessionId, token: payload.token },
+          });
+          if (!begun.ok) return { ok: false, reason: begun.reason as ScanFailure };
+          attemptId = begun.attemptId;
+        } catch {
+          return { ok: false, reason: "NETWORK" };
+        }
         // Fresh browser geolocation reading (no Bluetooth). Raw reading is sent to
         // the server, which computes distance and decides acceptance.
         let fix: LocationFix;
@@ -309,7 +319,7 @@ export const useAttendanceStore = create<AttendanceState>()(
         let res: ServerScanResult;
         try {
           res = await submitAttendanceScan({
-            data: { studentId: student.student_id, sessionId: payload.sessionId, token: payload.token, location: fix },
+            data: { studentId: student.student_id, attemptId, location: fix },
           });
         } catch {
           return { ok: false, reason: "NETWORK" };
