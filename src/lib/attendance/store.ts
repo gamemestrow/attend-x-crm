@@ -13,7 +13,8 @@ import {
   type Student,
   type Teacher,
 } from "./data";
-import { isDemoModeClient } from "./demo-mode";
+import { isDemoLocationClient, type DemoScenario } from "./demo-mode";
+import type { DemoLocationInfo } from "./attendance.functions";
 import { getFreshFix, GeoError, type LocationFix } from "./geo";
 import { beginAttendanceScan, submitAttendanceScan, type ServerScanResult } from "./attendance.functions";
 import { supabase } from "@/integrations/supabase/client";
@@ -42,8 +43,8 @@ export type ScanFailure =
   | "NETWORK";
 
 export type ScanOutcome =
-  | { ok: true; session: AttendanceSession; record: AttendanceRecord; distance: number | null; accuracy: number | null; locationVerified: boolean; demoMode: boolean }
-  | { ok: false; reason: ScanFailure; distance?: number; accuracy?: number; radius?: number };
+  | { ok: true; session: AttendanceSession; record: AttendanceRecord; distance: number | null; accuracy: number | null; locationVerified: boolean; demoMode: boolean; demo: DemoLocationInfo | null }
+  | { ok: false; reason: ScanFailure; distance?: number; accuracy?: number; radius?: number; demo?: DemoLocationInfo };
 
 export interface SessionConfig {
   classId: string;
@@ -312,20 +313,20 @@ export const useAttendanceStore = create<AttendanceState>()(
         // the server, which computes distance and decides acceptance.
         // Location permission is still requested. In temporary Demo Mode a failed
         // reading is sent as null (never fabricated) and the server decides.
-        let fix: LocationFix | null;
-        try {
-          fix = await getFreshFix();
-        } catch (e) {
-          const code = e instanceof GeoError ? e.code : "UNAVAILABLE";
-          if (!isDemoModeClient()) {
+        // DEMO LOCATION MODE: no GPS reading is taken; the server simulates it.
+        let fix: LocationFix | null = null;
+        if (!isDemoLocationClient()) {
+          try {
+            fix = await getFreshFix();
+          } catch (e) {
+            const code = e instanceof GeoError ? e.code : "UNAVAILABLE";
             return { ok: false, reason: code === "DENIED" ? "LOCATION_DENIED" : (`GEO_${code}` as ScanFailure) };
           }
-          fix = null;
         }
         let res: ServerScanResult;
         try {
           res = await submitAttendanceScan({
-            data: { studentId: student.student_id, attemptId, location: fix },
+            data: { studentId: student.student_id, attemptId, location: fix, ...(demoScenario ? { demoScenario } : {}) },
           });
         } catch {
           return { ok: false, reason: "NETWORK" };
@@ -337,6 +338,7 @@ export const useAttendanceStore = create<AttendanceState>()(
             ...(res.distance != null ? { distance: res.distance } : {}),
             ...(res.accuracy != null ? { accuracy: res.accuracy } : {}),
             ...(res.radius != null ? { radius: res.radius } : {}),
+            ...(res.demo ? { demo: res.demo } : {}),
           };
         }
         const s = res.session;
@@ -368,7 +370,7 @@ export const useAttendanceStore = create<AttendanceState>()(
           location_valid: res.locationVerified,
         };
         set((state) => ({ records: [...state.records.filter((r) => r.id !== record.id), record] }));
-        return { ok: true, session, record, distance: res.distance, accuracy: res.accuracy, locationVerified: res.locationVerified, demoMode: res.demoMode };
+        return { ok: true, session, record, distance: res.distance, accuracy: res.accuracy, locationVerified: res.locationVerified, demoMode: res.demoMode, demo: res.demo };
       },
 
       // Demo helper for the hackathon presentation: a few classmates scan in.
