@@ -13,7 +13,7 @@ import {
   type Student,
   type Teacher,
 } from "./data";
-import { isDemoLocationClient, type DemoScenario } from "./demo-mode";
+import { DEMO_REFERENCE_POINT, isDemoLocationClient, type DemoScenario } from "./demo-mode";
 import type { DemoLocationInfo } from "./attendance.functions";
 import { getFreshFix, GeoError, type LocationFix } from "./geo";
 import { beginAttendanceScan, submitAttendanceScan, type ServerScanResult } from "./attendance.functions";
@@ -52,7 +52,8 @@ export interface SessionConfig {
   subjectId: string;
   radius: number;
   qrValidity: number;
-  location: LocationFix;
+  /** null = Demo Location Mode: the fixed DEMO_REFERENCE_POINT is used (DEMO DATA). */
+  location: LocationFix | null;
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10).toUpperCase();
@@ -124,6 +125,7 @@ export const useAttendanceStore = create<AttendanceState>()(
       },
 
       startSession: async (cfg) => {
+        const ref = cfg.location ?? DEMO_REFERENCE_POINT;
         const st = get();
         const teacherId =
           st.auth?.role === "teacher" ? st.auth.teacher.teacher_id : "TCH001";
@@ -139,8 +141,8 @@ export const useAttendanceStore = create<AttendanceState>()(
           date: fmtDate(now),
           start_time: now,
           end_time: null,
-          teacher_latitude: cfg.location.lat,
-          teacher_longitude: cfg.location.lng,
+          teacher_latitude: ref.lat,
+          teacher_longitude: ref.lng,
           attendance_radius: cfg.radius,
           qr_validity: cfg.qrValidity,
           status: "ACTIVE",
@@ -167,13 +169,13 @@ export const useAttendanceStore = create<AttendanceState>()(
           semester: cfg.semester,
           session_date: session.date,
           start_time: new Date(now).toISOString(),
-          teacher_latitude: cfg.location.lat,
-          teacher_longitude: cfg.location.lng,
+          teacher_latitude: ref.lat,
+          teacher_longitude: ref.lng,
           attendance_radius: cfg.radius,
           qr_validity: cfg.qrValidity,
           status: "ACTIVE",
-          teacher_accuracy: cfg.location.accuracy,
-          teacher_location_at: new Date(cfg.location.timestamp).toISOString(),
+          teacher_accuracy: cfg.location ? cfg.location.accuracy : null,
+          teacher_location_at: cfg.location ? new Date(cfg.location.timestamp).toISOString() : null,
         } as never);
         if (sessionError) throw new Error(`Unable to create attendance session: ${sessionError.message}`);
 
