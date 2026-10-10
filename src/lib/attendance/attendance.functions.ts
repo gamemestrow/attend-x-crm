@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { findStudentByLoginId } from "./data";
+import { isDemoModeServer } from "./demo-mode";
 import { decideRadius, isValidLatLng, LOCATION_QUALITY } from "./geo";
 
 /**
@@ -51,8 +52,11 @@ export type ServerScanResult =
       };
       recordId: string;
       scanTime: string;
-      distance: number;
-      accuracy: number;
+      distance: number | null;
+      accuracy: number | null;
+      /** True only when the reading passed the real radius + accuracy check. */
+      locationVerified: boolean;
+      demoMode: boolean;
     }
   | {
       ok: false;
@@ -171,40 +175,60 @@ export const submitAttendanceScan = createServerFn({ method: "POST" })
         return { ok: false, reason: "EXPIRED" };
       }
       const sesRow = ses as typeof ses & { teacher_accuracy: number | null; teacher_location_at: string | null };
-      if (!data.location || !isValidLatLng(data.location)) {
-        await close({ quality_ok: false, outcome: "RETRY", reason: "INVALID_LOCATION" });
-        return { ok: false, reason: "INVALID_LOCATION", retry: true };
-      }
-      if (sesRow.teacher_accuracy == null) {
-        await close({ outcome: "RETRY", reason: "TEACHER_LOCATION_UNRELIABLE" });
-        return { ok: false, reason: "TEACHER_LOCATION_UNRELIABLE" };
-      }
-      const decision = decideRadius(
-        {
-          lat: ses.teacher_latitude,
-          lng: ses.teacher_longitude,
-          accuracy: sesRow.teacher_accuracy,
-          timestamp: sesRow.teacher_location_at ? new Date(sesRow.teacher_location_at).getTime() : now,
-        },
-        data.location,
-        ses.attendance_radius,
-        now,
-      );
-      if (decision.kind === "UNCERTAIN") {
-        const reason: ServerScanReason =
-          decision.who === "teacher"
-            ? "TEACHER_LOCATION_UNRELIABLE"
-            : decision.quality === "STALE"
-              ? "STALE_LOCATION"
-              : decision.quality === "INVALID"
-                ? "INVALID_LOCATION"
-                : "LOW_ACCURACY";
-        await close({ quality_ok: false, distance_meters: decision.distance, outcome: "RETRY", reason });
-        return { ok: false, reason, retry: true, accuracy: data.location.accuracy, radius: ses.attendance_radius };
-      }
-      if (decision.kind === "OUTSIDE") {
-        await close({ quality_ok: true, inside_radius: false, distance_meters: decision.distance, outcome: "REJECTED", reason: "OUTSIDE_RADIUS" });
-        return { ok: false, reason: "OUTSIDE_RADIUS", distance: decision.distance, accuracy: data.location.accuracy, radius: ses.attendance_radius };
+      // DEMO MODE (temporary): location problems are recorded but never block attendance.
+      const demo = isDemoModeServer();
+      const loc = data.location && isValidLatLng(data.location) ? data.location : null;
+      let distance: number | null = null;
+      let verified = false;
+      let demoNote: string | null = null;
+      if (!loc) {
+        if (!demo) {
+          await close({ quality_ok: false, outcome: "RETRY", reason: "INVALID_LOCATION" });
+          return { ok: false, reason: "INVALID_LOCATION", retry: true };
+        }
+        demoNote = "DEMO_NO_LOCATION";
+      } else if (sesRow.teacher_accuracy == null || ses.teacher_latitude == null || ses.teacher_longitude == null) {
+        if (!demo) {
+          await close({ outcome: "RETRY", reason: "TEACHER_LOCATION_UNRELIABLE" });
+          return { ok: false, reason: "TEACHER_LOCATION_UNRELIABLE" };
+        }
+        demoNote = "DEMO_TEACHER_LOCATION_UNRELIABLE";
+      } else {
+        const decision = decideRadius(
+          {
+            lat: ses.teacher_latitude,
+            lng: ses.teacher_longitude,
+            accuracy: sesRow.teacher_accuracy,
+            timestamp: sesRow.teacher_location_at ? new Date(sesRow.teacher_location_at).getTime() : now,
+          },
+          loc,
+          ses.attendance_radius,
+          now,
+        );
+        distance = decision.distance;
+        if (decision.kind === "UNCERTAIN") {
+          const reason: ServerScanReason =
+            decision.who === "teacher"
+              ? "TEACHER_LOCATION_UNRELIABLE"
+              : decision.quality === "STALE"
+                ? "STALE_LOCATION"
+                : decision.quality === "INVALID"
+                  ? "INVALID_LOCATION"
+                  : "LOW_ACCURACY";
+          if (!demo) {
+            await close({ quality_ok: false, distance_meters: decision.distance, outcome: "RETRY", reason });
+            return { ok: false, reason, retry: true, accuracy: loc.accuracy, radius: ses.attendance_radius };
+          }
+          demoNote = `DEMO_${reason}`;
+        } else if (decision.kind === "OUTSIDE") {
+          if (!demo) {
+            await close({ quality_ok: true, inside_radius: false, distance_meters: decision.distance, outcome: "REJECTED", reason: "OUTSIDE_RADIUS" });
+            return { ok: false, reason: "OUTSIDE_RADIUS", distance: decision.distance, accuracy: loc.accuracy, radius: ses.attendance_radius };
+          }
+          demoNote = "DEMO_OUTSIDE_RADIUS";
+        } else {
+          verified = true;
+        }
       }
       const recordId = `${ses.id}-${student.student_id}`;
       const scanTime = new Date(attempt.created_at).toISOString();
@@ -217,9 +241,9 @@ export const submitAttendanceScan = createServerFn({ method: "POST" })
         attendance_date: ses.session_date,
         scan_time: scanTime,
         status: "PRESENT",
-        location_valid: true,
+        location_valid: verified,
         ...studentLoc,
-        distance_meters: decision.distance,
+        distance_meters: distance,
       } as never);
       if (error?.code === "23505") {
         await close({ outcome: "REJECTED", reason: "DUPLICATE" });
@@ -229,7 +253,9 @@ export const submitAttendanceScan = createServerFn({ method: "POST" })
         console.error("attendance insert failed", error.message);
         return { ok: false, reason: "NETWORK" };
       }
-      await close({ quality_ok: true, inside_radius: true, distance_meters: decision.distance, outcome: "ACCEPTED", reason: "INSIDE_RADIUS" });
+      await close(verified
+        ? { quality_ok: true, inside_radius: true, distance_meters: distance, outcome: "ACCEPTED", reason: "INSIDE_RADIUS" }
+        : { quality_ok: false, inside_radius: distance == null ? null : distance <= ses.attendance_radius, distance_meters: distance, outcome: "ACCEPTED", reason: demoNote ?? "DEMO_MODE" });
       return {
         ok: true,
         session: {
@@ -245,8 +271,10 @@ export const submitAttendanceScan = createServerFn({ method: "POST" })
         },
         recordId,
         scanTime,
-        distance: decision.distance,
-        accuracy: data.location.accuracy,
+        distance,
+        accuracy: loc?.accuracy ?? null,
+        locationVerified: verified,
+        demoMode: demo,
       };
     } catch (e) {
       console.error("scan validation failed", e);
