@@ -19,36 +19,51 @@ export type Database = {
           attendance_date: string
           class_id: string
           created_at: string
+          distance_meters: number | null
           id: string
           location_valid: boolean
           scan_time: string | null
           session_id: string
           status: string
+          student_accuracy: number | null
           student_id: string
+          student_latitude: number | null
+          student_location_at: string | null
+          student_longitude: number | null
           subject_id: string
         }
         Insert: {
           attendance_date: string
           class_id: string
           created_at?: string
+          distance_meters?: number | null
           id: string
           location_valid?: boolean
           scan_time?: string | null
           session_id: string
           status: string
+          student_accuracy?: number | null
           student_id: string
+          student_latitude?: number | null
+          student_location_at?: string | null
+          student_longitude?: number | null
           subject_id: string
         }
         Update: {
           attendance_date?: string
           class_id?: string
           created_at?: string
+          distance_meters?: number | null
           id?: string
           location_valid?: boolean
           scan_time?: string | null
           session_id?: string
           status?: string
+          student_accuracy?: number | null
           student_id?: string
+          student_latitude?: number | null
+          student_location_at?: string | null
+          student_longitude?: number | null
           subject_id?: string
         }
         Relationships: [
@@ -74,8 +89,10 @@ export type Database = {
           start_time: string
           status: string
           subject_id: string
+          teacher_accuracy: number | null
           teacher_id: string
           teacher_latitude: number
+          teacher_location_at: string | null
           teacher_longitude: number
           updated_at: string
         }
@@ -91,8 +108,10 @@ export type Database = {
           start_time?: string
           status?: string
           subject_id: string
+          teacher_accuracy?: number | null
           teacher_id: string
           teacher_latitude: number
+          teacher_location_at?: string | null
           teacher_longitude: number
           updated_at?: string
         }
@@ -108,8 +127,10 @@ export type Database = {
           start_time?: string
           status?: string
           subject_id?: string
+          teacher_accuracy?: number | null
           teacher_id?: string
           teacher_latitude?: number
+          teacher_location_at?: string | null
           teacher_longitude?: number
           updated_at?: string
         }
@@ -149,6 +170,72 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      scan_attempts: {
+        Row: {
+          created_at: string
+          distance_meters: number | null
+          id: string
+          inside_radius: boolean | null
+          outcome: string
+          qr_valid: boolean
+          quality_ok: boolean | null
+          radius_meters: number | null
+          reason: string
+          session_id: string | null
+          student_accuracy: number | null
+          student_id: string
+          student_latitude: number | null
+          student_location_at: string | null
+          student_longitude: number | null
+          teacher_accuracy: number | null
+          teacher_latitude: number | null
+          teacher_location_at: string | null
+          teacher_longitude: number | null
+        }
+        Insert: {
+          created_at?: string
+          distance_meters?: number | null
+          id?: string
+          inside_radius?: boolean | null
+          outcome: string
+          qr_valid?: boolean
+          quality_ok?: boolean | null
+          radius_meters?: number | null
+          reason: string
+          session_id?: string | null
+          student_accuracy?: number | null
+          student_id: string
+          student_latitude?: number | null
+          student_location_at?: string | null
+          student_longitude?: number | null
+          teacher_accuracy?: number | null
+          teacher_latitude?: number | null
+          teacher_location_at?: string | null
+          teacher_longitude?: number | null
+        }
+        Update: {
+          created_at?: string
+          distance_meters?: number | null
+          id?: string
+          inside_radius?: boolean | null
+          outcome?: string
+          qr_valid?: boolean
+          quality_ok?: boolean | null
+          radius_meters?: number | null
+          reason?: string
+          session_id?: string | null
+          student_accuracy?: number | null
+          student_id?: string
+          student_latitude?: number | null
+          student_location_at?: string | null
+          student_longitude?: number | null
+          teacher_accuracy?: number | null
+          teacher_latitude?: number | null
+          teacher_location_at?: string | null
+          teacher_longitude?: number | null
+        }
+        Relationships: []
       }
     }
     Views: {
