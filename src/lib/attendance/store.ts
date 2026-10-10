@@ -73,7 +73,7 @@ interface AttendanceState {
   expireActiveToken: (sessionId: string) => void;
   endSession: (sessionId: string) => void;
   submitSession: (sessionId: string) => void;
-  attemptScan: (raw: string) => Promise<ScanOutcome>;
+  attemptScan: (raw: string, demoScenario?: DemoScenario) => Promise<ScanOutcome>;
   simulateScans: (sessionId: string, count?: number) => void;
 }
 
@@ -292,7 +292,7 @@ export const useAttendanceStore = create<AttendanceState>()(
         });
       },
 
-      attemptScan: async (raw) => {
+      attemptScan: async (raw, demoScenario) => {
         const auth = get().auth;
         // 1. Logged in?
         if (!auth || auth.role !== "student") return { ok: false, reason: "NOT_LOGGED_IN" };
