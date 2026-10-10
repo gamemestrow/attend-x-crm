@@ -19,7 +19,7 @@ import {
   teacherMaxAccuracy,
   type LocationFix,
 } from "@/lib/attendance/geo";
-import { DEMO_REFERENCE_POINT, isDemoLocationClient } from "@/lib/attendance/demo-mode";
+import { isDemoLocationClient } from "@/lib/attendance/demo-mode";
 import { useAttendanceStore } from "@/lib/attendance/store";
 import { cn } from "@/lib/utils";
 
@@ -184,17 +184,6 @@ function StartPage() {
                 <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Attendance Location
                 </div>
-                {demo && (
-                  <div className="space-y-1 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
-                    <div className="font-semibold text-warning">DEMO DATA — Demo Location Mode</div>
-                    <div className="text-muted-foreground">
-                      Demo reference point (not a GPS reading):{" "}
-                      <code className="font-mono text-[11px]">
-                        {DEMO_REFERENCE_POINT.lat.toFixed(5)}, {DEMO_REFERENCE_POINT.lng.toFixed(5)}
-                      </code>
-                    </div>
-                  </div>
-                )}
                 {!demo && loc.kind === "idle" && (
                   <Button variant="outline" onClick={() => void detect()} className="gap-2">
                     <MapPin className="h-4 w-4" /> Detect teacher location
@@ -292,7 +281,7 @@ function StartPage() {
               <SummaryRow k="Radius" v={`${effectiveRadius} meters`} />
               <SummaryRow
                 k="Teacher Location"
-                v={demo ? "Demo reference (DEMO DATA)" : loc.kind === "ok" ? `Detected (±${Math.round(loc.pos.accuracy)} m)` : loc.kind === "detecting" ? "Detecting…" : loc.kind === "poor" ? "Too inaccurate" : "Not detected"}
+                v={demo ? "Reference point set" : loc.kind === "ok" ? `Detected (±${Math.round(loc.pos.accuracy)} m)` : loc.kind === "detecting" ? "Detecting…" : loc.kind === "poor" ? "Too inaccurate" : "Not detected"}
               />
             </dl>
             <Button
@@ -307,11 +296,6 @@ function StartPage() {
             {!canStart && (
               <p className="mt-2 text-center text-xs text-muted-foreground">
                 Detect your location to enable starting the session.
-              </p>
-            )}
-            {demo && (
-              <p className="mt-2 text-center text-xs text-warning">
-                Demo Location Mode: simulated positions are checked against the selected radius.
               </p>
             )}
           </CardContent>

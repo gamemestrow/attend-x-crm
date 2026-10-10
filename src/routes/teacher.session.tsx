@@ -1,4 +1,3 @@
-import { isDemoReference } from "@/lib/attendance/demo-mode";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   AlertTriangle,
@@ -348,9 +347,6 @@ function LiveView({ session }: { session: AttendanceSession }) {
               <span className="flex items-center gap-1.5">
                 <MapPin className="h-3.5 w-3.5" />
                 {session.teacher_latitude.toFixed(4)}, {session.teacher_longitude.toFixed(4)}
-                {isDemoReference({ lat: session.teacher_latitude, lng: session.teacher_longitude }) && (
-                  <span className="font-semibold text-warning">DEMO DATA</span>
-                )}
               </span>
               <span className="font-semibold text-foreground">
                 {session.attendance_radius} m radius
