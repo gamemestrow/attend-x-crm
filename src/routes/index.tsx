@@ -127,11 +127,6 @@ function LoginPage() {
           </div>
         </CardContent>
       </Card>
-
-      <p className="mt-8 text-center text-xs text-muted-foreground">
-        Team <span className="font-semibold text-foreground">The Innovators</span> · Smart India
-        Hackathon 2026
-      </p>
     </div>
   );
 }

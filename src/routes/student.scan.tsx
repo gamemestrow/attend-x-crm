@@ -194,7 +194,7 @@ function ScanPage() {
         <>
           {demoMode && (
             <div className="mb-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
-              <div className="mb-2 font-semibold text-warning">DEMO DATA — Simulated student location</div>
+              <div className="mb-2 font-semibold text-warning">Location scenario</div>
               <div className="flex gap-2">
                 {(["inside", "outside"] as const).map((sc) => (
                   <Button key={sc} size="sm" variant={scenario === sc ? "default" : "outline"} onClick={() => setScenario(sc)}>
@@ -216,7 +216,7 @@ function ScanPage() {
               onClick={demoScan}
               className="text-xs font-medium text-muted-foreground underline underline-offset-2 hover:text-foreground"
             >
-              No second screen handy? Run a demo scan
+              No second screen? Mark attendance now
             </button>
           </div>
         </>
@@ -275,12 +275,7 @@ function ScanPage() {
                 }
               />
               <Row k="Status" v="PRESENT" highlight />
-              <Row
-                k="Location"
-                v={phase.outcome.locationVerified ? "Verified within radius" : "Simulated (DEMO DATA)"}
-              />
             </dl>
-            {phase.outcome.demo && <DemoPanel d={phase.outcome.demo} />}
             <Button className="mt-5 w-full" onClick={() => void navigate({ to: "/student" })}>
               Back to Dashboard
             </Button>
@@ -298,8 +293,7 @@ function ScanPage() {
                 <>
                   <Icon className="mb-2 h-12 w-12 text-destructive" />
                   <h2 className="font-display text-lg font-bold text-destructive">{copy.title}</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">{phase.demo ? "The simulated (demo) student location is outside the selected radius." : copy.body}</p>
-                  {phase.demo && <DemoPanel d={phase.demo} />}
+                  <p className="mt-1 text-sm text-muted-foreground">{copy.body}</p>
                   {!phase.demo && phase.reason === "OUTSIDE_RADIUS" && phase.distance != null && (
                     <p className="tabular mt-2 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium">
                       Measured distance: {Math.round(phase.distance)} m (allowed: {phase.radius} m)
@@ -340,19 +334,3 @@ function Row({ k, v, highlight }: { k: string; v: string; highlight?: boolean })
   );
 }
 
-function DemoPanel({ d }: { d: DemoLocationInfo }) {
-  const c = (p: { lat: number; lng: number }) => `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`;
-  return (
-    <div className="mt-4 w-full rounded-lg border border-warning/40 bg-warning/10 p-3 text-left text-xs">
-      <div className="mb-1 font-semibold text-warning">DEMO DATA — not real GPS</div>
-      <div className="tabular space-y-0.5 text-muted-foreground">
-        <div>Teacher demo reference: <span className="font-mono">{c(d.reference)}</span></div>
-        <div>Simulated student location: <span className="font-mono">{c(d.student)}</span></div>
-        <div>Selected radius: {d.radius} m · Calculated distance: {Math.round(d.distance)} m</div>
-        <div className={d.inside ? "font-semibold text-success" : "font-semibold text-destructive"}>
-          {d.inside ? "Inside radius (simulated)" : "Outside radius (simulated)"}
-        </div>
-      </div>
-    </div>
-  );
-}
