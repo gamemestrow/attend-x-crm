@@ -41,7 +41,7 @@ type Phase =
   | { kind: "scanning" }
   | { kind: "validating" }
   | { kind: "success"; outcome: Extract<ScanOutcome, { ok: true }> }
-  | { kind: "failure"; reason: ScanFailure | "CAMERA_DENIED"; distance?: number };
+  | { kind: "failure"; reason: ScanFailure | "CAMERA_DENIED"; distance?: number; accuracy?: number; radius?: number };
 
 const VALIDATION_STEPS = [
   "Verifying login",
@@ -49,7 +49,8 @@ const VALIDATION_STEPS = [
   "Checking session status",
   "Verifying class enrolment",
   "Checking duplicate entry",
-  "Verifying your location",
+  "Taking a fresh location reading",
+  "Server distance check",
 ];
 
 const FAILURE_COPY: Record<string, { title: string; body: string; icon: typeof XCircle }> = {
@@ -70,7 +71,7 @@ const FAILURE_COPY: Record<string, { title: string; body: string; icon: typeof X
   },
   OUTSIDE_RADIUS: {
     title: "Outside Attendance Area",
-    body: "You are outside the teacher's configured attendance radius.",
+    body: "Your location was measured reliably and is outside the teacher's attendance area.",
     icon: MapPinOff,
   },
   DUPLICATE: {
@@ -87,6 +88,51 @@ const FAILURE_COPY: Record<string, { title: string; body: string; icon: typeof X
     title: "Camera Permission Required",
     body: "Allow camera access to scan the attendance QR.",
     icon: CameraOff,
+  },
+  LOW_ACCURACY: {
+    title: "Location Not Precise Enough",
+    body: "We couldn't verify your location reliably — this does not mean you are too far. Move near a window or open area, turn on Wi-Fi and device location, then scan again.",
+    icon: MapPinOff,
+  },
+  STALE_LOCATION: {
+    title: "Location Reading Out of Date",
+    body: "Your device returned an old location. Please scan again to take a fresh reading.",
+    icon: Clock4,
+  },
+  INVALID_LOCATION: {
+    title: "Location Could Not Be Verified",
+    body: "Your device returned an invalid location. Please scan again.",
+    icon: MapPinOff,
+  },
+  TEACHER_LOCATION_UNRELIABLE: {
+    title: "Session Location Not Verified",
+    body: "The teacher's session location is not reliable enough. Ask your teacher to restart the session.",
+    icon: ShieldAlert,
+  },
+  GEO_TIMEOUT: {
+    title: "Location Timed Out",
+    body: "Getting your location took too long. Move to a spot with better reception and retry.",
+    icon: Clock4,
+  },
+  GEO_UNAVAILABLE: {
+    title: "Location Unavailable",
+    body: "Your device could not determine a location. Turn on device location and retry.",
+    icon: MapPinOff,
+  },
+  GEO_UNSUPPORTED: {
+    title: "Location Not Supported",
+    body: "This browser can't share location. Use a current version of Chrome.",
+    icon: MapPinOff,
+  },
+  GEO_INSECURE: {
+    title: "Secure Connection Required",
+    body: "Location only works on the secure (https://) version of AttendX.",
+    icon: ShieldAlert,
+  },
+  NETWORK: {
+    title: "Attendance Not Saved",
+    body: "We couldn't reach the server, so attendance was NOT recorded. Check your internet and scan again.",
+    icon: XCircle,
   },
   NOT_LOGGED_IN: {
     title: "Not Signed In",
@@ -111,11 +157,13 @@ function ScanPage() {
     if (outcome.ok) {
       setPhase({ kind: "success", outcome });
     } else {
-      setPhase(
-        outcome.distance != null
-          ? { kind: "failure", reason: outcome.reason, distance: outcome.distance }
-          : { kind: "failure", reason: outcome.reason },
-      );
+      setPhase({
+        kind: "failure",
+        reason: outcome.reason,
+        ...(outcome.distance != null ? { distance: outcome.distance } : {}),
+        ...(outcome.accuracy != null ? { accuracy: outcome.accuracy } : {}),
+        ...(outcome.radius != null ? { radius: outcome.radius } : {}),
+      });
     }
   };
 
@@ -231,7 +279,12 @@ function ScanPage() {
                   <p className="mt-1 text-sm text-muted-foreground">{copy.body}</p>
                   {phase.reason === "OUTSIDE_RADIUS" && phase.distance != null && (
                     <p className="tabular mt-2 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium">
-                      Detected distance: {phase.distance} m
+                      Measured distance: {Math.round(phase.distance)} m (allowed: {phase.radius} m)
+                    </p>
+                  )}
+                  {phase.accuracy != null && (
+                    <p className="tabular mt-2 text-xs text-muted-foreground">
+                      Your reported accuracy: ±{Math.round(phase.accuracy)} m
                     </p>
                   )}
                 </>

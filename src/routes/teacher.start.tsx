@@ -12,7 +12,13 @@ import {
   SEMESTERS,
   SUBJECTS,
 } from "@/lib/attendance/data";
-import { CAMPUS_FALLBACK, getBrowserPosition, type LatLng } from "@/lib/attendance/geo";
+import {
+  GEO_ERROR_COPY,
+  GeoError,
+  getFreshFix,
+  LOCATION_QUALITY,
+  type LocationFix,
+} from "@/lib/attendance/geo";
 import { useAttendanceStore } from "@/lib/attendance/store";
 import { cn } from "@/lib/utils";
 
@@ -33,7 +39,9 @@ export const Route = createFileRoute("/teacher/start")({
 type LocState =
   | { kind: "idle" }
   | { kind: "detecting" }
-  | { kind: "ok"; pos: LatLng; fallback: boolean };
+  | { kind: "ok"; pos: LocationFix }
+  | { kind: "poor"; pos: LocationFix }
+  | { kind: "error"; message: string };
 
 function StartPage() {
   const [classId, setClassId] = useState("cls-bca-a");
@@ -43,6 +51,7 @@ function StartPage() {
   const [customRadius, setCustomRadius] = useState("");
   const [validity, setValidity] = useState(15);
   const [loc, setLoc] = useState<LocState>({ kind: "idle" });
+  const [startError, setStartError] = useState<string | null>(null);
   const startSession = useAttendanceStore((s) => s.startSession);
   const navigate = useNavigate();
 
@@ -51,24 +60,35 @@ function StartPage() {
   const detect = async () => {
     setLoc({ kind: "detecting" });
     try {
-      const pos = await getBrowserPosition();
-      setLoc({ kind: "ok", pos, fallback: false });
-    } catch {
-      setLoc({ kind: "ok", pos: CAMPUS_FALLBACK, fallback: true });
+      const pos = await getFreshFix();
+      setLoc(pos.accuracy <= LOCATION_QUALITY.maxAccuracyMeters ? { kind: "ok", pos } : { kind: "poor", pos });
+    } catch (e) {
+      const code = e instanceof GeoError ? e.code : "UNAVAILABLE";
+      setLoc({ kind: "error", message: GEO_ERROR_COPY[code] });
     }
   };
 
   const start = async () => {
     if (loc.kind !== "ok") return;
-    await startSession({
+    // Never start a session on a stale reference location.
+    if (Date.now() - loc.pos.timestamp > 2 * 60_000) {
+      setLoc({ kind: "error", message: "Your location reading is over 2 minutes old. Detect it again." });
+      return;
+    }
+    setStartError(null);
+    try {
+      await startSession({
       classId,
       semester,
       subjectId,
       radius: effectiveRadius,
       qrValidity: validity,
       location: loc.pos,
-    });
-    await navigate({ to: "/teacher/session" });
+      });
+      await navigate({ to: "/teacher/session" });
+    } catch {
+      setStartError("Could not save the session. Check your internet connection and try again.");
+    }
   };
 
   const cls = CLASSES.find((c) => c.id === classId);
@@ -155,8 +175,8 @@ function StartPage() {
                   <div className="flex flex-wrap items-center gap-3">
                     <span className="flex items-center gap-1.5 text-sm font-medium text-success">
                       <CheckCircle2 className="h-4 w-4" /> Location detected successfully
-                      {loc.fallback && " (campus default)"}
                     </span>
+                    <span className="tabular text-xs text-muted-foreground">±{Math.round(loc.pos.accuracy)} m</span>
                     <code className="rounded bg-muted px-2 py-1 font-mono text-[11px] text-muted-foreground">
                       {loc.pos.lat.toFixed(5)}, {loc.pos.lng.toFixed(5)}
                     </code>
@@ -166,6 +186,18 @@ function StartPage() {
                     >
                       Redetect
                     </button>
+                  </div>
+                )}
+                {(loc.kind === "poor" || loc.kind === "error") && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-destructive">
+                      {loc.kind === "error"
+                        ? loc.message
+                        : `Location accuracy is ±${Math.round(loc.pos.accuracy)} m — worse than the ±${LOCATION_QUALITY.maxAccuracyMeters} m needed for a reliable reference point. Move near a window, turn on Wi-Fi/location services, and retry.`}
+                    </p>
+                    <Button variant="outline" size="sm" onClick={() => void detect()} className="gap-2">
+                      <MapPin className="h-4 w-4" /> Retry location
+                    </Button>
                   </div>
                 )}
               </div>
@@ -226,7 +258,7 @@ function StartPage() {
               <SummaryRow k="Radius" v={`${effectiveRadius} meters`} />
               <SummaryRow
                 k="Teacher Location"
-                v={loc.kind === "ok" ? "Detected" : loc.kind === "detecting" ? "Detecting…" : "Not detected"}
+                v={loc.kind === "ok" ? `Detected (±${Math.round(loc.pos.accuracy)} m)` : loc.kind === "detecting" ? "Detecting…" : loc.kind === "poor" ? "Too inaccurate" : "Not detected"}
               />
             </dl>
             <Button
@@ -237,6 +269,7 @@ function StartPage() {
             >
               <Play className="h-4 w-4" /> START ATTENDANCE
             </Button>
+            {startError && <p className="mt-2 text-center text-xs text-destructive">{startError}</p>}
             {loc.kind !== "ok" && (
               <p className="mt-2 text-center text-xs text-muted-foreground">
                 Detect your location to enable starting the session.
