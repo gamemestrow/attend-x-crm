@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assessFix, decideRadius, haversineMeters, LOCATION_QUALITY } from "./geo";
+import { assessFix, decideRadius, teacherMaxAccuracy, haversineMeters, LOCATION_QUALITY } from "./geo";
 
 const NOW = 1_800_000_000_000;
 const fix = (lat: number, lng: number, accuracy = 10, timestamp = NOW) => ({ lat, lng, accuracy, timestamp });
@@ -57,5 +57,15 @@ describe("decideRadius (50 m radius)", () => {
   });
   it("flags stale student readings", () => {
     expect(assessFix(fix(22.5, 88.3, 5, NOW - LOCATION_QUALITY.maxAgeMs - 1), NOW)).toBe("STALE");
+  });
+});
+
+describe("teacherMaxAccuracy (radius is never changed)", () => {
+  it("50 m radius keeps ±50 m", () => expect(teacherMaxAccuracy(50)).toBe(50));
+  it("200 m radius accepts a ±100 m laptop reference", () => expect(teacherMaxAccuracy(200)).toBe(100));
+  it("caps at ±150 m", () => expect(teacherMaxAccuracy(1000)).toBe(150));
+  it("±105 m teacher with 300 m radius is usable server-side", () => {
+    const t = fix(22.5726, 88.3639, 105);
+    expect(decideRadius(t, fix(22.5726 + metersNorth(40), 88.3639, 10), 300, NOW).kind).toBe("INSIDE");
   });
 });
