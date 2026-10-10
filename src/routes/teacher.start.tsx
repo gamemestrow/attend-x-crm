@@ -16,7 +16,7 @@ import {
   GEO_ERROR_COPY,
   GeoError,
   getFreshFix,
-  LOCATION_QUALITY,
+  teacherMaxAccuracy,
   type LocationFix,
 } from "@/lib/attendance/geo";
 import { useAttendanceStore } from "@/lib/attendance/store";
@@ -35,6 +35,9 @@ export const Route = createFileRoute("/teacher/start")({
   }),
   component: StartPage,
 });
+
+/** Stop sampling early once a reading is this good. */
+const LOCATION_QUALITY_TARGET = 50;
 
 type LocState =
   | { kind: "idle" }
@@ -60,8 +63,8 @@ function StartPage() {
   const detect = async () => {
     setLoc({ kind: "detecting" });
     try {
-      const pos = await getFreshFix();
-      setLoc(pos.accuracy <= LOCATION_QUALITY.maxAccuracyMeters ? { kind: "ok", pos } : { kind: "poor", pos });
+      const pos = await getFreshFix({ targetAccuracy: LOCATION_QUALITY_TARGET, windowMs: 20_000, timeoutMs: 25_000 });
+      setLoc(pos.accuracy <= teacherMaxAccuracy(effectiveRadius) ? { kind: "ok", pos } : { kind: "poor", pos });
     } catch (e) {
       const code = e instanceof GeoError ? e.code : "UNAVAILABLE";
       setLoc({ kind: "error", message: GEO_ERROR_COPY[code] });
@@ -70,6 +73,10 @@ function StartPage() {
 
   const start = async () => {
     if (loc.kind !== "ok") return;
+    if (loc.pos.accuracy > teacherMaxAccuracy(effectiveRadius)) {
+      setLoc({ kind: "poor", pos: loc.pos });
+      return;
+    }
     // Never start a session on a stale reference location.
     if (Date.now() - loc.pos.timestamp > 2 * 60_000) {
       setLoc({ kind: "error", message: "Your location reading is over 2 minutes old. Detect it again." });
@@ -193,7 +200,7 @@ function StartPage() {
                     <p className="text-sm font-medium text-destructive">
                       {loc.kind === "error"
                         ? loc.message
-                        : `Location accuracy is ±${Math.round(loc.pos.accuracy)} m — worse than the ±${LOCATION_QUALITY.maxAccuracyMeters} m needed for a reliable reference point. Move near a window, turn on Wi-Fi/location services, and retry.`}
+                        : `Location accuracy is ±${Math.round(loc.pos.accuracy)} m — worse than the ±${Math.round(teacherMaxAccuracy(effectiveRadius))} m needed for a ${effectiveRadius} m radius. Laptops locate via Wi-Fi: keep Wi-Fi ON (even if wired), allow precise location in Windows Settings › Privacy › Location, and retry — or start the session from your phone.`}
                     </p>
                     <Button variant="outline" size="sm" onClick={() => void detect()} className="gap-2">
                       <MapPin className="h-4 w-4" /> Retry location

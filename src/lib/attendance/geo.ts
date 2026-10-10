@@ -30,6 +30,17 @@ export const LOCATION_QUALITY = {
   watchWindowMs: 12_000,
 } as const;
 
+/**
+ * Accuracy a *teacher reference* reading needs for a given radius. Laptops
+ * have no GPS (Wi-Fi positioning is typically ±60-150 m), so a fixed ±50 m
+ * blocked every laptop. The reference only needs to be small relative to the
+ * area: at most half the radius, never looser than ±150 m, never stricter
+ * than the student limit. The radius itself is never changed.
+ */
+export function teacherMaxAccuracy(radiusMeters: number): number {
+  return Math.min(150, Math.max(LOCATION_QUALITY.maxAccuracyMeters, radiusMeters / 2));
+}
+
 export function isValidLatLng(p: unknown): p is LatLng {
   if (!p || typeof p !== "object") return false;
   const { lat, lng } = p as Record<string, unknown>;
@@ -90,7 +101,7 @@ export function decideRadius(
   teacherMaxAgeMs = Number.POSITIVE_INFINITY,
 ): RadiusDecision {
   const tq = isValidLatLng(teacher) && Number.isFinite(teacher.accuracy)
-    ? teacher.accuracy > LOCATION_QUALITY.maxAccuracyMeters
+    ? teacher.accuracy > teacherMaxAccuracy(radiusMeters)
       ? "LOW_ACCURACY"
       : now - teacher.timestamp > teacherMaxAgeMs
         ? "STALE"
@@ -135,7 +146,8 @@ const toFix = (p: GeolocationPosition): LocationFix => ({
  * reported accuracy (no coordinate averaging). Resolves early once a reading
  * meets the quality threshold.
  */
-export function getFreshFix(opts?: { timeoutMs?: number; windowMs?: number }): Promise<LocationFix> {
+export function getFreshFix(opts?: { timeoutMs?: number; windowMs?: number; targetAccuracy?: number }): Promise<LocationFix> {
+  const target = opts?.targetAccuracy ?? LOCATION_QUALITY.maxAccuracyMeters;
   const timeout = opts?.timeoutMs ?? LOCATION_QUALITY.timeoutMs;
   const windowMs = opts?.windowMs ?? LOCATION_QUALITY.watchWindowMs;
   return new Promise((resolve, reject) => {
@@ -151,17 +163,19 @@ export function getFreshFix(opts?: { timeoutMs?: number; windowMs?: number }): P
     let watchId: number | null = null;
     let done = false;
     let windowTimer: ReturnType<typeof setTimeout> | undefined;
+    let pollTimer: ReturnType<typeof setInterval> | undefined;
     const finish = (fn: () => void) => {
       if (done) return;
       done = true;
       if (watchId != null) geo.clearWatch(watchId);
       if (windowTimer) clearTimeout(windowTimer);
+      if (pollTimer) clearInterval(pollTimer);
       fn();
     };
     const consider = (p: GeolocationPosition) => {
       const fix = toFix(p);
       if (!best || fix.accuracy < best.accuracy) best = fix;
-      if (fix.accuracy <= LOCATION_QUALITY.maxAccuracyMeters) finish(() => resolve(fix));
+      if (fix.accuracy <= target) finish(() => resolve(fix));
     };
     const onErr = (err: GeolocationPositionError) => {
       if (best) finish(() => resolve(best!));
@@ -172,6 +186,11 @@ export function getFreshFix(opts?: { timeoutMs?: number; windowMs?: number }): P
         consider(p);
         if (done) return;
         watchId = geo.watchPosition(consider, onErr, options);
+        // Desktop Chrome often never fires watchPosition again on a stationary
+        // laptop; re-request a fresh reading every 3 s within the same window.
+        pollTimer = setInterval(() => {
+          if (!done) geo.getCurrentPosition(consider, () => {}, options);
+        }, 3000);
         windowTimer = setTimeout(() => finish(() => resolve(best!)), windowMs);
       },
       onErr,
