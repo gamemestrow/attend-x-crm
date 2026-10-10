@@ -298,7 +298,7 @@ function ScanPage() {
                 <>
                   <Icon className="mb-2 h-12 w-12 text-destructive" />
                   <h2 className="font-display text-lg font-bold text-destructive">{copy.title}</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">{copy.body}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{phase.demo ? "The simulated (demo) student location is outside the selected radius." : copy.body}</p>
                   {phase.demo && <DemoPanel d={phase.demo} />}
                   {!phase.demo && phase.reason === "OUTSIDE_RADIUS" && phase.distance != null && (
                     <p className="tabular mt-2 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium">
