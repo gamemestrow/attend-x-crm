@@ -19,7 +19,7 @@ import {
   teacherMaxAccuracy,
   type LocationFix,
 } from "@/lib/attendance/geo";
-import { isDemoModeClient } from "@/lib/attendance/demo-mode";
+import { DEMO_REFERENCE_POINT, isDemoLocationClient } from "@/lib/attendance/demo-mode";
 import { useAttendanceStore } from "@/lib/attendance/store";
 import { cn } from "@/lib/utils";
 
@@ -72,13 +72,24 @@ function StartPage() {
     }
   };
 
-  // Demo Mode: a low-accuracy (but real) reading may still start a session.
-  const demo = isDemoModeClient();
-  const canStart = loc.kind === "ok" || (demo && loc.kind === "poor");
+  // Demo Location Mode: the fixed demo reference point is used; GPS is not needed.
+  const demo = isDemoLocationClient();
+  const canStart = demo || loc.kind === "ok";
+
+  const startDemo = async () => {
+    setStartError(null);
+    try {
+      await startSession({ classId, semester, subjectId, radius: effectiveRadius, qrValidity: validity, location: null });
+      await navigate({ to: "/teacher/session" });
+    } catch {
+      setStartError("Could not save the session. Check your internet connection and try again.");
+    }
+  };
 
   const start = async () => {
-    if (loc.kind !== "ok" && !(demo && loc.kind === "poor")) return;
-    if (!demo && loc.pos.accuracy > teacherMaxAccuracy(effectiveRadius)) {
+    if (demo) return startDemo();
+    if (loc.kind !== "ok") return;
+    if (loc.pos.accuracy > teacherMaxAccuracy(effectiveRadius)) {
       setLoc({ kind: "poor", pos: loc.pos });
       return;
     }
@@ -173,17 +184,28 @@ function StartPage() {
                 <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Attendance Location
                 </div>
-                {loc.kind === "idle" && (
+                {demo && (
+                  <div className="space-y-1 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+                    <div className="font-semibold text-warning">DEMO DATA — Demo Location Mode</div>
+                    <div className="text-muted-foreground">
+                      Demo reference point (not a GPS reading):{" "}
+                      <code className="font-mono text-[11px]">
+                        {DEMO_REFERENCE_POINT.lat.toFixed(5)}, {DEMO_REFERENCE_POINT.lng.toFixed(5)}
+                      </code>
+                    </div>
+                  </div>
+                )}
+                {!demo && loc.kind === "idle" && (
                   <Button variant="outline" onClick={() => void detect()} className="gap-2">
                     <MapPin className="h-4 w-4" /> Detect teacher location
                   </Button>
                 )}
-                {loc.kind === "detecting" && (
+                {!demo && loc.kind === "detecting" && (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" /> Detecting teacher location…
                   </div>
                 )}
-                {loc.kind === "ok" && (
+                {!demo && loc.kind === "ok" && (
                   <div className="flex flex-wrap items-center gap-3">
                     <span className="flex items-center gap-1.5 text-sm font-medium text-success">
                       <CheckCircle2 className="h-4 w-4" /> Location detected successfully
@@ -200,7 +222,7 @@ function StartPage() {
                     </button>
                   </div>
                 )}
-                {(loc.kind === "poor" || loc.kind === "error") && (
+                {!demo && (loc.kind === "poor" || loc.kind === "error") && (
                   <div className="space-y-2">
                     <p className="text-sm font-medium text-destructive">
                       {loc.kind === "error"
@@ -270,7 +292,7 @@ function StartPage() {
               <SummaryRow k="Radius" v={`${effectiveRadius} meters`} />
               <SummaryRow
                 k="Teacher Location"
-                v={loc.kind === "ok" ? `Detected (±${Math.round(loc.pos.accuracy)} m)` : loc.kind === "detecting" ? "Detecting…" : loc.kind === "poor" ? "Too inaccurate" : "Not detected"}
+                v={demo ? "Demo reference (DEMO DATA)" : loc.kind === "ok" ? `Detected (±${Math.round(loc.pos.accuracy)} m)` : loc.kind === "detecting" ? "Detecting…" : loc.kind === "poor" ? "Too inaccurate" : "Not detected"}
               />
             </dl>
             <Button
@@ -289,7 +311,7 @@ function StartPage() {
             )}
             {demo && (
               <p className="mt-2 text-center text-xs text-warning">
-                Demo Mode: distance and accuracy are recorded but not enforced.
+                Demo Location Mode: simulated positions are checked against the selected radius.
               </p>
             )}
           </CardContent>

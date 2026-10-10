@@ -13,7 +13,8 @@ import {
   type Student,
   type Teacher,
 } from "./data";
-import { isDemoModeClient } from "./demo-mode";
+import { DEMO_REFERENCE_POINT, isDemoLocationClient, type DemoScenario } from "./demo-mode";
+import type { DemoLocationInfo } from "./attendance.functions";
 import { getFreshFix, GeoError, type LocationFix } from "./geo";
 import { beginAttendanceScan, submitAttendanceScan, type ServerScanResult } from "./attendance.functions";
 import { supabase } from "@/integrations/supabase/client";
@@ -42,8 +43,8 @@ export type ScanFailure =
   | "NETWORK";
 
 export type ScanOutcome =
-  | { ok: true; session: AttendanceSession; record: AttendanceRecord; distance: number | null; accuracy: number | null; locationVerified: boolean; demoMode: boolean }
-  | { ok: false; reason: ScanFailure; distance?: number; accuracy?: number; radius?: number };
+  | { ok: true; session: AttendanceSession; record: AttendanceRecord; distance: number | null; accuracy: number | null; locationVerified: boolean; demoMode: boolean; demo: DemoLocationInfo | null }
+  | { ok: false; reason: ScanFailure; distance?: number; accuracy?: number; radius?: number; demo?: DemoLocationInfo };
 
 export interface SessionConfig {
   classId: string;
@@ -51,7 +52,8 @@ export interface SessionConfig {
   subjectId: string;
   radius: number;
   qrValidity: number;
-  location: LocationFix;
+  /** null = Demo Location Mode: the fixed DEMO_REFERENCE_POINT is used (DEMO DATA). */
+  location: LocationFix | null;
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10).toUpperCase();
@@ -72,7 +74,7 @@ interface AttendanceState {
   expireActiveToken: (sessionId: string) => void;
   endSession: (sessionId: string) => void;
   submitSession: (sessionId: string) => void;
-  attemptScan: (raw: string) => Promise<ScanOutcome>;
+  attemptScan: (raw: string, demoScenario?: DemoScenario) => Promise<ScanOutcome>;
   simulateScans: (sessionId: string, count?: number) => void;
 }
 
@@ -123,6 +125,7 @@ export const useAttendanceStore = create<AttendanceState>()(
       },
 
       startSession: async (cfg) => {
+        const ref = cfg.location ?? DEMO_REFERENCE_POINT;
         const st = get();
         const teacherId =
           st.auth?.role === "teacher" ? st.auth.teacher.teacher_id : "TCH001";
@@ -138,8 +141,8 @@ export const useAttendanceStore = create<AttendanceState>()(
           date: fmtDate(now),
           start_time: now,
           end_time: null,
-          teacher_latitude: cfg.location.lat,
-          teacher_longitude: cfg.location.lng,
+          teacher_latitude: ref.lat,
+          teacher_longitude: ref.lng,
           attendance_radius: cfg.radius,
           qr_validity: cfg.qrValidity,
           status: "ACTIVE",
@@ -166,13 +169,13 @@ export const useAttendanceStore = create<AttendanceState>()(
           semester: cfg.semester,
           session_date: session.date,
           start_time: new Date(now).toISOString(),
-          teacher_latitude: cfg.location.lat,
-          teacher_longitude: cfg.location.lng,
+          teacher_latitude: ref.lat,
+          teacher_longitude: ref.lng,
           attendance_radius: cfg.radius,
           qr_validity: cfg.qrValidity,
           status: "ACTIVE",
-          teacher_accuracy: cfg.location.accuracy,
-          teacher_location_at: new Date(cfg.location.timestamp).toISOString(),
+          teacher_accuracy: cfg.location ? cfg.location.accuracy : null,
+          teacher_location_at: cfg.location ? new Date(cfg.location.timestamp).toISOString() : null,
         } as never);
         if (sessionError) throw new Error(`Unable to create attendance session: ${sessionError.message}`);
 
@@ -291,7 +294,7 @@ export const useAttendanceStore = create<AttendanceState>()(
         });
       },
 
-      attemptScan: async (raw) => {
+      attemptScan: async (raw, demoScenario) => {
         const auth = get().auth;
         // 1. Logged in?
         if (!auth || auth.role !== "student") return { ok: false, reason: "NOT_LOGGED_IN" };
@@ -312,20 +315,20 @@ export const useAttendanceStore = create<AttendanceState>()(
         // the server, which computes distance and decides acceptance.
         // Location permission is still requested. In temporary Demo Mode a failed
         // reading is sent as null (never fabricated) and the server decides.
-        let fix: LocationFix | null;
-        try {
-          fix = await getFreshFix();
-        } catch (e) {
-          const code = e instanceof GeoError ? e.code : "UNAVAILABLE";
-          if (!isDemoModeClient()) {
+        // DEMO LOCATION MODE: no GPS reading is taken; the server simulates it.
+        let fix: LocationFix | null = null;
+        if (!isDemoLocationClient()) {
+          try {
+            fix = await getFreshFix();
+          } catch (e) {
+            const code = e instanceof GeoError ? e.code : "UNAVAILABLE";
             return { ok: false, reason: code === "DENIED" ? "LOCATION_DENIED" : (`GEO_${code}` as ScanFailure) };
           }
-          fix = null;
         }
         let res: ServerScanResult;
         try {
           res = await submitAttendanceScan({
-            data: { studentId: student.student_id, attemptId, location: fix },
+            data: { studentId: student.student_id, attemptId, location: fix, ...(demoScenario ? { demoScenario } : {}) },
           });
         } catch {
           return { ok: false, reason: "NETWORK" };
@@ -337,6 +340,7 @@ export const useAttendanceStore = create<AttendanceState>()(
             ...(res.distance != null ? { distance: res.distance } : {}),
             ...(res.accuracy != null ? { accuracy: res.accuracy } : {}),
             ...(res.radius != null ? { radius: res.radius } : {}),
+            ...(res.demo ? { demo: res.demo } : {}),
           };
         }
         const s = res.session;
@@ -368,7 +372,7 @@ export const useAttendanceStore = create<AttendanceState>()(
           location_valid: res.locationVerified,
         };
         set((state) => ({ records: [...state.records.filter((r) => r.id !== record.id), record] }));
-        return { ok: true, session, record, distance: res.distance, accuracy: res.accuracy, locationVerified: res.locationVerified, demoMode: res.demoMode };
+        return { ok: true, session, record, distance: res.distance, accuracy: res.accuracy, locationVerified: res.locationVerified, demoMode: res.demoMode, demo: res.demo };
       },
 
       // Demo helper for the hackathon presentation: a few classmates scan in.

@@ -1,8 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { findStudentByLoginId } from "./data";
-import { isDemoModeServer } from "./demo-mode";
-import { decideRadius, isValidLatLng, LOCATION_QUALITY } from "./geo";
+import { DEMO_REFERENCE_POINT, isDemoLocationServer, isDemoReference, simulateStudentLocation } from "./demo-mode";
+import { decideRadius, haversineMeters, isValidLatLng, LOCATION_QUALITY } from "./geo";
 
 /**
  * Authoritative attendance check. Runs on the server; the browser only sends
@@ -18,6 +18,7 @@ const SubmitInput = z.object({
   studentId: z.string().min(1).max(40),
   attemptId: z.string().uuid(),
   location: z.object({ lat: z.number(), lng: z.number(), accuracy: z.number(), timestamp: z.number() }).nullable(),
+  demoScenario: z.enum(["inside", "outside"]).optional(),
 });
 
 /** Time allowed between a valid QR scan and the location reading arriving. */
@@ -57,6 +58,7 @@ export type ServerScanResult =
       /** True only when the reading passed the real radius + accuracy check. */
       locationVerified: boolean;
       demoMode: boolean;
+      demo: DemoLocationInfo | null;
     }
   | {
       ok: false;
@@ -67,7 +69,17 @@ export type ServerScanResult =
       radius?: number;
       /** When true, the student should take a new location reading and retry. */
       retry?: boolean;
+      demo?: DemoLocationInfo;
     };
+
+/** Simulated location result — DEMO DATA, never a real GPS reading. */
+export interface DemoLocationInfo {
+  reference: { lat: number; lng: number };
+  student: { lat: number; lng: number };
+  distance: number;
+  radius: number;
+  inside: boolean;
+}
 
 
 async function admin() {
@@ -163,7 +175,7 @@ export const submitAttendanceScan = createServerFn({ method: "POST" })
           }
         : {};
       const close = (row: Record<string, unknown>) =>
-        db.from("scan_attempts").update({ ...studentLoc, ...row } as never).eq("id", attempt.id);
+        db.from("scan_attempts").update({ ...(isDemoLocationServer() ? {} : studentLoc), ...row } as never).eq("id", attempt.id);
       const now = Date.now();
       if (now - new Date(attempt.created_at).getTime() > LOCATION_WINDOW_MS) {
         await close({ outcome: "REJECTED", reason: "EXPIRED" });
@@ -175,25 +187,31 @@ export const submitAttendanceScan = createServerFn({ method: "POST" })
         return { ok: false, reason: "EXPIRED" };
       }
       const sesRow = ses as typeof ses & { teacher_accuracy: number | null; teacher_location_at: string | null };
-      // DEMO MODE (temporary): location problems are recorded but never block attendance.
-      const demo = isDemoModeServer();
+      const demo = isDemoLocationServer();
       const loc = data.location && isValidLatLng(data.location) ? data.location : null;
       let distance: number | null = null;
       let verified = false;
-      let demoNote: string | null = null;
-      if (!loc) {
-        if (!demo) {
+      let demoInfo: DemoLocationInfo | null = null;
+      if (demo) {
+        // DEMO LOCATION MODE: real GPS is ignored entirely. Both points are
+        // simulated (DEMO DATA) and the selected radius is still enforced.
+        const sim = simulateStudentLocation(student.student_id, ses.attendance_radius, data.demoScenario ?? "inside");
+        distance = haversineMeters(DEMO_REFERENCE_POINT, sim);
+        const inside = distance <= ses.attendance_radius;
+        demoInfo = { reference: DEMO_REFERENCE_POINT, student: sim, distance, radius: ses.attendance_radius, inside };
+        if (!inside) {
+          await db.from("scan_attempts").update({ inside_radius: false, distance_meters: distance, outcome: "REJECTED", reason: "DEMO_OUTSIDE_RADIUS" } as never).eq("id", attempt.id);
+          return { ok: false, reason: "OUTSIDE_RADIUS", distance, radius: ses.attendance_radius, demo: demoInfo };
+        }
+      } else {
+        if (!loc) {
           await close({ quality_ok: false, outcome: "RETRY", reason: "INVALID_LOCATION" });
           return { ok: false, reason: "INVALID_LOCATION", retry: true };
         }
-        demoNote = "DEMO_NO_LOCATION";
-      } else if (sesRow.teacher_accuracy == null || ses.teacher_latitude == null || ses.teacher_longitude == null) {
-        if (!demo) {
+        if (sesRow.teacher_accuracy == null || isDemoReference({ lat: ses.teacher_latitude, lng: ses.teacher_longitude })) {
           await close({ outcome: "RETRY", reason: "TEACHER_LOCATION_UNRELIABLE" });
           return { ok: false, reason: "TEACHER_LOCATION_UNRELIABLE" };
         }
-        demoNote = "DEMO_TEACHER_LOCATION_UNRELIABLE";
-      } else {
         const decision = decideRadius(
           {
             lat: ses.teacher_latitude,
@@ -205,7 +223,6 @@ export const submitAttendanceScan = createServerFn({ method: "POST" })
           ses.attendance_radius,
           now,
         );
-        distance = decision.distance;
         if (decision.kind === "UNCERTAIN") {
           const reason: ServerScanReason =
             decision.who === "teacher"
@@ -215,20 +232,15 @@ export const submitAttendanceScan = createServerFn({ method: "POST" })
                 : decision.quality === "INVALID"
                   ? "INVALID_LOCATION"
                   : "LOW_ACCURACY";
-          if (!demo) {
-            await close({ quality_ok: false, distance_meters: decision.distance, outcome: "RETRY", reason });
-            return { ok: false, reason, retry: true, accuracy: loc.accuracy, radius: ses.attendance_radius };
-          }
-          demoNote = `DEMO_${reason}`;
-        } else if (decision.kind === "OUTSIDE") {
-          if (!demo) {
-            await close({ quality_ok: true, inside_radius: false, distance_meters: decision.distance, outcome: "REJECTED", reason: "OUTSIDE_RADIUS" });
-            return { ok: false, reason: "OUTSIDE_RADIUS", distance: decision.distance, accuracy: loc.accuracy, radius: ses.attendance_radius };
-          }
-          demoNote = "DEMO_OUTSIDE_RADIUS";
-        } else {
-          verified = true;
+          await close({ quality_ok: false, distance_meters: decision.distance, outcome: "RETRY", reason });
+          return { ok: false, reason, retry: true, accuracy: loc.accuracy, radius: ses.attendance_radius };
         }
+        if (decision.kind === "OUTSIDE") {
+          await close({ quality_ok: true, inside_radius: false, distance_meters: decision.distance, outcome: "REJECTED", reason: "OUTSIDE_RADIUS" });
+          return { ok: false, reason: "OUTSIDE_RADIUS", distance: decision.distance, accuracy: loc.accuracy, radius: ses.attendance_radius };
+        }
+        distance = decision.distance;
+        verified = true;
       }
       const recordId = `${ses.id}-${student.student_id}`;
       const scanTime = new Date(attempt.created_at).toISOString();
@@ -242,7 +254,7 @@ export const submitAttendanceScan = createServerFn({ method: "POST" })
         scan_time: scanTime,
         status: "PRESENT",
         location_valid: verified,
-        ...studentLoc,
+        ...(demo ? {} : studentLoc),
         distance_meters: distance,
       } as never);
       if (error?.code === "23505") {
@@ -255,7 +267,7 @@ export const submitAttendanceScan = createServerFn({ method: "POST" })
       }
       await close(verified
         ? { quality_ok: true, inside_radius: true, distance_meters: distance, outcome: "ACCEPTED", reason: "INSIDE_RADIUS" }
-        : { quality_ok: false, inside_radius: distance == null ? null : distance <= ses.attendance_radius, distance_meters: distance, outcome: "ACCEPTED", reason: demoNote ?? "DEMO_MODE" });
+        : { inside_radius: true, distance_meters: distance, outcome: "ACCEPTED", reason: "DEMO_INSIDE_RADIUS" });
       return {
         ok: true,
         session: {
@@ -275,6 +287,7 @@ export const submitAttendanceScan = createServerFn({ method: "POST" })
         accuracy: loc?.accuracy ?? null,
         locationVerified: verified,
         demoMode: demo,
+        demo: demoInfo,
       };
     } catch (e) {
       console.error("scan validation failed", e);

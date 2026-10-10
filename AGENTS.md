@@ -11,4 +11,4 @@
 
 - Attendance is written only by server functions in src/lib/attendance/attendance.functions.ts (two-step: begin at QR scan, submit with location); browsers have no insert rights — so client-side distance/approval can't be forged.
 - Location verification uses browser geolocation only; quality threshold (LOCATION_QUALITY) is kept separate from the teacher's radius and never widens it.
-- Temporary Demo Mode lives only in src/lib/attendance/demo-mode.ts (DEMO_MODE flag, forced off by ATTENDX_ENV/VITE_ATTENDX_ENV=production); the server skips radius/accuracy rejection but stores location_valid=false — so strict checks return by flipping one flag.
+- Demo Location Mode lives only in src/lib/attendance/demo-mode.ts (DEMO_LOCATION_MODE flag, forced off by ATTENDX_ENV/VITE_ATTENDX_ENV=production); the server ignores real GPS, simulates student points around DEMO_REFERENCE_POINT, still enforces the radius, and stores location_valid=false — so strict checks return by flipping one flag.
