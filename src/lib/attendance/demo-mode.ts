@@ -23,12 +23,12 @@ function envIsProduction(env: string | undefined) {
 /** Server-side check. Call inside a server function handler. */
 export function isDemoModeServer(): boolean {
   if (!DEMO_MODE) return false;
-  const env = typeof process !== "undefined" ? process.env?.ATTENDX_ENV : undefined;
+  const env = typeof process !== "undefined" ? process.env?.["ATTENDX_ENV"] : undefined;
   return !envIsProduction(env);
 }
 
 /** Browser-side check (UI behaviour + labels only; the server decides acceptance). */
 export function isDemoModeClient(): boolean {
   if (!DEMO_MODE) return false;
-  return !envIsProduction(import.meta.env.VITE_ATTENDX_ENV as string | undefined);
+  return !envIsProduction(import.meta.env["VITE_ATTENDX_ENV"] as string | undefined);
 }
