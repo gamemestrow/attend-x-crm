@@ -56,6 +56,7 @@ import { cn } from "@/lib/utils";
 import { encodeAttendanceQr } from "@/lib/attendance/qr";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
+import { LocationDiagnostics } from "@/components/attendance/location-diagnostics";
 
 export const Route = createFileRoute("/teacher/session")({
   head: () => ({
@@ -450,6 +451,8 @@ function LiveView({ session }: { session: AttendanceSession }) {
               )}
             </CardContent>
           </Card>
+
+          <LocationDiagnostics sessionId={session.session_id} teacherId={session.teacher_id} />
 
           <Card>
             <button
