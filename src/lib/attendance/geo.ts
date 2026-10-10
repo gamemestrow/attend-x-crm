@@ -1,34 +1,189 @@
-// Geographic helpers — Haversine distance + browser geolocation wrapper.
+// Geographic helpers — validated Haversine distance + browser geolocation.
+// Location is verified with the browser Geolocation API only (no Bluetooth).
 
 export interface LatLng {
   lat: number;
   lng: number;
 }
 
-/** Campus fallback (Kolkata) used when the teacher's browser blocks geolocation. */
-export const CAMPUS_FALLBACK: LatLng = { lat: 22.5726, lng: 88.3639 };
+/** A single browser location reading. accuracy is the browser's *estimated* 68% radius in meters. */
+export interface LocationFix extends LatLng {
+  accuracy: number;
+  timestamp: number;
+}
 
+/** Mean Earth radius (IUGG) in meters — used everywhere for consistency. */
+export const EARTH_RADIUS_M = 6371008.8;
+
+/**
+ * Location-quality policy. Separate from the attendance radius: it only
+ * decides whether a reading is good enough to evaluate, never widens the area.
+ */
+export const LOCATION_QUALITY = {
+  /** A reading whose reported accuracy is worse than this cannot be evaluated. */
+  maxAccuracyMeters: 50,
+  /** Readings older than this are considered stale. */
+  maxAgeMs: 30_000,
+  /** Geolocation request timeout. */
+  timeoutMs: 20_000,
+  /** watchPosition attempts before giving up on a better reading. */
+  watchWindowMs: 12_000,
+} as const;
+
+export function isValidLatLng(p: unknown): p is LatLng {
+  if (!p || typeof p !== "object") return false;
+  const { lat, lng } = p as Record<string, unknown>;
+  return (
+    typeof lat === "number" &&
+    typeof lng === "number" &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lng >= -180 &&
+    lng <= 180
+  );
+}
+
+/** Great-circle distance in meters (unrounded). Throws on invalid coordinates. */
 export function haversineMeters(a: LatLng, b: LatLng): number {
-  const R = 6371000;
+  if (!isValidLatLng(a) || !isValidLatLng(b)) throw new Error("invalid-coordinates");
   const toRad = (d: number) => (d * Math.PI) / 180;
   const dLat = toRad(b.lat - a.lat);
   const dLng = toRad(b.lng - a.lng);
   const s =
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(s));
+  // Clamp guards against floating-point drift slightly above 1.
+  return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(Math.max(0, s))));
 }
 
-export function getBrowserPosition(timeoutMs = 9000): Promise<LatLng> {
+export type QualityVerdict = "OK" | "LOW_ACCURACY" | "STALE" | "INVALID";
+
+export function assessFix(fix: unknown, now: number = Date.now()): QualityVerdict {
+  if (!isValidLatLng(fix)) return "INVALID";
+  const { accuracy, timestamp } = fix as Partial<LocationFix>;
+  if (typeof accuracy !== "number" || !Number.isFinite(accuracy) || accuracy < 0) return "INVALID";
+  if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) return "INVALID";
+  if (timestamp > now + 60_000) return "INVALID";
+  if (now - timestamp > LOCATION_QUALITY.maxAgeMs) return "STALE";
+  if (accuracy > LOCATION_QUALITY.maxAccuracyMeters) return "LOW_ACCURACY";
+  return "OK";
+}
+
+export type RadiusDecision =
+  | { kind: "INSIDE"; distance: number }
+  | { kind: "OUTSIDE"; distance: number }
+  | { kind: "UNCERTAIN"; distance: number | null; quality: QualityVerdict; who: "teacher" | "student" };
+
+/**
+ * Case A: quality OK & distance <= radius  -> INSIDE
+ * Case B: either reading not usable          -> UNCERTAIN (retry; never "too far")
+ * Case C: quality OK & distance > radius     -> OUTSIDE
+ * The radius is never enlarged and accuracy is never subtracted from distance.
+ */
+export function decideRadius(
+  teacher: LocationFix,
+  student: LocationFix,
+  radiusMeters: number,
+  now: number = Date.now(),
+  teacherMaxAgeMs = Number.POSITIVE_INFINITY,
+): RadiusDecision {
+  const tq = isValidLatLng(teacher) && Number.isFinite(teacher.accuracy)
+    ? teacher.accuracy > LOCATION_QUALITY.maxAccuracyMeters
+      ? "LOW_ACCURACY"
+      : now - teacher.timestamp > teacherMaxAgeMs
+        ? "STALE"
+        : "OK"
+    : "INVALID";
+  const sq = assessFix(student, now);
+  if (tq !== "OK") return { kind: "UNCERTAIN", distance: null, quality: tq, who: "teacher" };
+  const distance = haversineMeters(teacher, student);
+  if (sq !== "OK") return { kind: "UNCERTAIN", distance: sq === "INVALID" ? null : distance, quality: sq, who: "student" };
+  return distance <= radiusMeters ? { kind: "INSIDE", distance } : { kind: "OUTSIDE", distance };
+}
+
+export type GeoErrorCode = "UNSUPPORTED" | "INSECURE" | "DENIED" | "UNAVAILABLE" | "TIMEOUT";
+
+export class GeoError extends Error {
+  constructor(public code: GeoErrorCode) {
+    super(code);
+  }
+}
+
+function mapError(err: GeolocationPositionError): GeoError {
+  if (err.code === 1) return new GeoError("DENIED");
+  if (err.code === 3) return new GeoError("TIMEOUT");
+  return new GeoError("UNAVAILABLE");
+}
+
+function precheck() {
+  if (typeof window !== "undefined" && window.isSecureContext === false) throw new GeoError("INSECURE");
+  if (typeof navigator === "undefined" || !navigator.geolocation) throw new GeoError("UNSUPPORTED");
+}
+
+const toFix = (p: GeolocationPosition): LocationFix => ({
+  lat: p.coords.latitude,
+  lng: p.coords.longitude,
+  accuracy: p.coords.accuracy,
+  timestamp: p.timestamp,
+});
+
+/**
+ * Fresh high-accuracy reading. Starts with getCurrentPosition, then keeps a
+ * watchPosition open for a short window and returns the reading with the best
+ * reported accuracy (no coordinate averaging). Resolves early once a reading
+ * meets the quality threshold.
+ */
+export function getFreshFix(opts?: { timeoutMs?: number; windowMs?: number }): Promise<LocationFix> {
+  const timeout = opts?.timeoutMs ?? LOCATION_QUALITY.timeoutMs;
+  const windowMs = opts?.windowMs ?? LOCATION_QUALITY.watchWindowMs;
   return new Promise((resolve, reject) => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      reject(new Error("geolocation-unavailable"));
+    try {
+      precheck();
+    } catch (e) {
+      reject(e);
       return;
     }
-    navigator.geolocation.getCurrentPosition(
-      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
-      (err) => reject(err),
-      { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 5000 },
+    const geo = navigator.geolocation;
+    const options: PositionOptions = { enableHighAccuracy: true, maximumAge: 0, timeout };
+    let best: LocationFix | null = null;
+    let watchId: number | null = null;
+    let done = false;
+    let windowTimer: ReturnType<typeof setTimeout> | undefined;
+    const finish = (fn: () => void) => {
+      if (done) return;
+      done = true;
+      if (watchId != null) geo.clearWatch(watchId);
+      if (windowTimer) clearTimeout(windowTimer);
+      fn();
+    };
+    const consider = (p: GeolocationPosition) => {
+      const fix = toFix(p);
+      if (!best || fix.accuracy < best.accuracy) best = fix;
+      if (fix.accuracy <= LOCATION_QUALITY.maxAccuracyMeters) finish(() => resolve(fix));
+    };
+    const onErr = (err: GeolocationPositionError) => {
+      if (best) finish(() => resolve(best!));
+      else finish(() => reject(mapError(err)));
+    };
+    geo.getCurrentPosition(
+      (p) => {
+        consider(p);
+        if (done) return;
+        watchId = geo.watchPosition(consider, onErr, options);
+        windowTimer = setTimeout(() => finish(() => resolve(best!)), windowMs);
+      },
+      onErr,
+      options,
     );
   });
 }
+
+export const GEO_ERROR_COPY: Record<GeoErrorCode, string> = {
+  UNSUPPORTED: "This browser does not support location access. Use a current version of Chrome.",
+  INSECURE: "Location only works on a secure (https://) page. Open the app from its https link.",
+  DENIED: "Location permission was denied. Allow location for this site in your browser settings and retry.",
+  UNAVAILABLE: "Your device could not determine a location. Turn on device location / Wi-Fi and retry.",
+  TIMEOUT: "Getting your location took too long. Move near a window or open area and retry.",
+};
