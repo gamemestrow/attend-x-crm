@@ -13,7 +13,8 @@ import {
   type Student,
   type Teacher,
 } from "./data";
-import { getBrowserPosition, haversineMeters, type LatLng } from "./geo";
+import { getFreshFix, GeoError, type LocationFix } from "./geo";
+import { submitAttendanceScan, type ServerScanResult } from "./attendance.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { parseAttendanceQr } from "./qr";
 
@@ -28,11 +29,20 @@ export type ScanFailure =
   | "WRONG_CLASS"
   | "DUPLICATE"
   | "LOCATION_DENIED"
-  | "OUTSIDE_RADIUS";
+  | "OUTSIDE_RADIUS"
+  | "INVALID_LOCATION"
+  | "LOW_ACCURACY"
+  | "STALE_LOCATION"
+  | "TEACHER_LOCATION_UNRELIABLE"
+  | "GEO_UNSUPPORTED"
+  | "GEO_INSECURE"
+  | "GEO_UNAVAILABLE"
+  | "GEO_TIMEOUT"
+  | "NETWORK";
 
 export type ScanOutcome =
-  | { ok: true; session: AttendanceSession; record: AttendanceRecord }
-  | { ok: false; reason: ScanFailure; distance?: number };
+  | { ok: true; session: AttendanceSession; record: AttendanceRecord; distance: number; accuracy: number }
+  | { ok: false; reason: ScanFailure; distance?: number; accuracy?: number; radius?: number };
 
 export interface SessionConfig {
   classId: string;
@@ -40,7 +50,7 @@ export interface SessionConfig {
   subjectId: string;
   radius: number;
   qrValidity: number;
-  location: LatLng;
+  location: LocationFix;
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10).toUpperCase();
@@ -160,7 +170,9 @@ export const useAttendanceStore = create<AttendanceState>()(
           attendance_radius: cfg.radius,
           qr_validity: cfg.qrValidity,
           status: "ACTIVE",
-        });
+          teacher_accuracy: cfg.location.accuracy,
+          teacher_location_at: new Date(cfg.location.timestamp).toISOString(),
+        } as never);
         if (sessionError) throw new Error(`Unable to create attendance session: ${sessionError.message}`);
 
         const { error: tokenError } = await supabase.from("qr_tokens").insert({
@@ -283,134 +295,64 @@ export const useAttendanceStore = create<AttendanceState>()(
         // 1. Logged in?
         if (!auth || auth.role !== "student") return { ok: false, reason: "NOT_LOGGED_IN" };
         const student = auth.student;
-        // 2. Decode the versioned payload, then resolve its token from the shared database.
         const payload = parseAttendanceQr(raw);
         if (!payload) return { ok: false, reason: "INVALID_QR" };
-        const { data: tokenRow, error: tokenError } = await supabase
-          .from("qr_tokens")
-          .select("id, session_id, token, created_at, expires_at, status")
-          .eq("token", payload.token)
-          .maybeSingle();
-        if (tokenError || !tokenRow || (payload.sessionId && payload.sessionId !== tokenRow.session_id)) {
-          return { ok: false, reason: "INVALID_QR" };
-        }
-        const token: QrToken = {
-          ...tokenRow,
-          created_at: new Date(tokenRow.created_at).getTime(),
-          expires_at: new Date(tokenRow.expires_at).getTime(),
-          status: tokenRow.status as QrToken["status"],
-        };
-        const { data: sessionRow, error: sessionError } = await supabase
-          .from("attendance_sessions")
-          .select("*")
-          .eq("id", token.session_id)
-          .maybeSingle();
-        if (sessionError || !sessionRow) return { ok: false, reason: "INVALID_QR" };
-        const session: AttendanceSession = {
-          id: sessionRow.id,
-          session_id: sessionRow.id,
-          teacher_id: sessionRow.teacher_id,
-          class_id: sessionRow.class_id,
-          subject_id: sessionRow.subject_id,
-          semester: sessionRow.semester,
-          date: sessionRow.session_date,
-          start_time: new Date(sessionRow.start_time).getTime(),
-          end_time: sessionRow.end_time ? new Date(sessionRow.end_time).getTime() : null,
-          teacher_latitude: sessionRow.teacher_latitude,
-          teacher_longitude: sessionRow.teacher_longitude,
-          attendance_radius: sessionRow.attendance_radius,
-          qr_validity: sessionRow.qr_validity,
-          status: sessionRow.status as AttendanceSession["status"],
-        };
-        // 3. Session + token still active?
-        const now = Date.now();
-        if (session.status !== "ACTIVE" || token.status !== "ACTIVE" || now > token.expires_at) {
-          if (token.status === "ACTIVE") get().expireActiveToken(token.session_id);
-          return { ok: false, reason: "EXPIRED" };
-        }
-        // 4. Correct class?
-        if (student.class_id !== session.class_id) return { ok: false, reason: "WRONG_CLASS" };
-        // 5. Duplicate?
-        const { data: existing } = await supabase
-          .from("attendance_records")
-          .select("id")
-          .eq("session_id", session.session_id)
-          .eq("student_id", student.student_id)
-          .maybeSingle();
-        if (existing) return { ok: false, reason: "DUPLICATE" };
-        // 6. Location permission
-        let pos: LatLng;
+        // Fresh browser geolocation reading (no Bluetooth). Raw reading is sent to
+        // the server, which computes distance and decides acceptance.
+        let fix: LocationFix;
         try {
-          pos = await getBrowserPosition();
+          fix = await getFreshFix();
+        } catch (e) {
+          const code = e instanceof GeoError ? e.code : "UNAVAILABLE";
+          return { ok: false, reason: code === "DENIED" ? "LOCATION_DENIED" : (`GEO_${code}` as ScanFailure) };
+        }
+        let res: ServerScanResult;
+        try {
+          res = await submitAttendanceScan({
+            data: { studentId: student.student_id, sessionId: payload.sessionId, token: payload.token, location: fix },
+          });
         } catch {
-          return { ok: false, reason: "LOCATION_DENIED" };
+          return { ok: false, reason: "NETWORK" };
         }
-        // Location permission can take several seconds. Re-read the shared rows
-        // before writing so a token/session that expired while the prompt was open
-        // cannot be accepted from stale pre-location state.
-        const { data: currentToken } = await supabase
-          .from("qr_tokens")
-          .select("status, expires_at")
-          .eq("id", token.id)
-          .maybeSingle();
-        const { data: currentSession } = await supabase
-          .from("attendance_sessions")
-          .select("status")
-          .eq("id", session.session_id)
-          .maybeSingle();
-        const scanTime = Date.now();
-        if (
-          !currentToken ||
-          !currentSession ||
-          currentToken.status !== "ACTIVE" ||
-          currentSession.status !== "ACTIVE" ||
-          scanTime > new Date(currentToken.expires_at).getTime()
-        ) {
-          return { ok: false, reason: "EXPIRED" };
+        if (!res.ok) {
+          return {
+            ok: false,
+            reason: res.reason as ScanFailure,
+            ...(res.distance != null ? { distance: res.distance } : {}),
+            ...(res.accuracy != null ? { accuracy: res.accuracy } : {}),
+            ...(res.radius != null ? { radius: res.radius } : {}),
+          };
         }
-        // 7. Inside radius? (Haversine)
-        const distance = haversineMeters(pos, {
-          lat: session.teacher_latitude,
-          lng: session.teacher_longitude,
-        });
-        if (distance > session.attendance_radius) {
-          return { ok: false, reason: "OUTSIDE_RADIUS", distance: Math.round(distance) };
-        }
-        // 8. Mark attendance (temporary, pending teacher submission)
+        const s = res.session;
+        const session: AttendanceSession = {
+          id: s.id,
+          session_id: s.id,
+          teacher_id: s.teacher_id,
+          class_id: s.class_id,
+          subject_id: s.subject_id,
+          semester: s.semester,
+          date: s.session_date,
+          start_time: new Date(s.start_time).getTime(),
+          end_time: null,
+          teacher_latitude: 0,
+          teacher_longitude: 0,
+          attendance_radius: s.attendance_radius,
+          qr_validity: s.qr_validity,
+          status: "ACTIVE",
+        };
         const record: AttendanceRecord = {
-          id: `${session.session_id}-${student.student_id}`,
-          session_id: session.session_id,
+          id: res.recordId,
+          session_id: s.id,
           student_id: student.student_id,
-          subject_id: session.subject_id,
-          class_id: session.class_id,
-          date: session.date,
-          scan_time: scanTime,
+          subject_id: s.subject_id,
+          class_id: s.class_id,
+          date: s.session_date,
+          scan_time: new Date(res.scanTime).getTime(),
           status: "PRESENT",
           location_valid: true,
         };
-        const { error: recordError } = await supabase.from("attendance_records").insert({
-          id: record.id,
-          session_id: record.session_id,
-          student_id: record.student_id,
-          subject_id: record.subject_id,
-          class_id: record.class_id,
-          attendance_date: record.date,
-          scan_time: new Date(scanTime).toISOString(),
-          status: record.status,
-          location_valid: record.location_valid,
-        });
-        if (recordError?.code === "23505") return { ok: false, reason: "DUPLICATE" };
-        if (recordError) return { ok: false, reason: "INVALID_QR" };
-        set((state) => ({
-          sessions: state.sessions.some((item) => item.session_id === session.session_id)
-            ? state.sessions
-            : [...state.sessions, session],
-          tokens: state.tokens.some((item) => item.id === token.id)
-            ? state.tokens
-            : [...state.tokens, token],
-          records: [...state.records, record],
-        }));
-        return { ok: true, session, record };
+        set((state) => ({ records: [...state.records.filter((r) => r.id !== record.id), record] }));
+        return { ok: true, session, record, distance: res.distance, accuracy: res.accuracy };
       },
 
       // Demo helper for the hackathon presentation: a few classmates scan in.
